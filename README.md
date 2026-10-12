@@ -18,7 +18,9 @@ Production runs from immutable OCI images. Each change to `master` builds
 and tests an image before the notebook deploys it. Pull requests run the
 same checks without publishing or deploying.
 
-See [the server guide](ops/README.md) for installation, status and rollback.
+Read the [complete server documentation](https://arthurgusmao.com.br/notes/server/)
+for architecture, installation, CI/CD, operations, development and recovery.
+The [repository quickstart](ops/README.md) provides the essential commands.
 
 ## License
 

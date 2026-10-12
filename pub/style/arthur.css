@@ -148,3 +148,17 @@ body,
 .headerTitle {
     font-family: "Oxanium", sans-serif;
 }
+
+#main-copy code {
+    font-family: ui-monospace, monospace;
+    font-size: 0.9em;
+    overflow-wrap: anywhere;
+}
+
+#main-copy pre {
+    overflow-x: auto;
+    padding: 14px;
+    border: 1px solid var(--border);
+    line-height: 1.6;
+    white-space: pre;
+}
