@@ -10,46 +10,62 @@ permissions:
 
 concurrency:
   group: website-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate website
+      - name: Validate sources
         run: |
+          set -eu
           test -s site/index.md
           test -s pub/style/style.css
           test -s pub/fonts/oxanium.woff2
-
-          echo "Website files validated"
 
       - name: Deploy to Alpine Linux
         env:
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
         run: |
           set -eu
-
           test -n "$DEPLOY_SECRET"
-
           printf '{"ref":"refs/heads/master","repository":{"full_name":"%s"},"after":"%s"}' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" > payload.json
-
           SIGNATURE=$(openssl dgst -sha256 \
             -hmac "$DEPLOY_SECRET" payload.json | awk '{print $NF}')
-
-          curl --fail-with-body \
-            --silent \
-            --show-error \
-            --connect-timeout 15 \
-            --max-time 90 \
-            --retry 2 \
-            -X POST \
-            -H "Content-Type: application/json" \
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-time 95 \
+            -H 'Content-Type: application/json' \
             -H "X-Hub-Signature-256: sha256=$SIGNATURE" \
             --data-binary @payload.json \
             https://deploy.arthurgusmao.com.br/hooks/publish
+
+      - name: Verify published revision
+        run: |
+          set -eu
+          URL=https://arthurgusmao.com.br
+          ACTUAL=''
+          for attempt in 1 2 3; do
+            ACTUAL=$(curl -fsSL --connect-timeout 6 --max-time 15 \
+              -H 'Cache-Control: no-cache' \
+              "$URL/pub/meta/revision.txt?rev=$GITHUB_SHA&attempt=$attempt" || :)
+            if [ "$ACTUAL" = "$GITHUB_SHA" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ACTUAL" != "$GITHUB_SHA" ]; then
+            echo "Wrong published revision: '$ACTUAL' (expected $GITHUB_SHA)" >&2
+            exit 1
+          fi
+          curl -fsSL --connect-timeout 6 --max-time 15 \
+            "$URL/?rev=$GITHUB_SHA" -o "$RUNNER_TEMP/home.html"
+          grep -qi '<html' "$RUNNER_TEMP/home.html"
+          curl -fsSL --connect-timeout 6 --max-time 15 \
+            "$URL/pub/style/style.css?rev=$GITHUB_SHA" \
+            -o "$RUNNER_TEMP/style.css"
+          test -s "$RUNNER_TEMP/style.css"
+          echo "Verified published revision: $GITHUB_SHA"
