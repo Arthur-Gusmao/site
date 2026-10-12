@@ -3,6 +3,8 @@
 set -eu
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 [ "$(id -u)" -eq 0 ] || { echo 'Run with doas' >&2; exit 1; }
+# Cron starts in /root, which the rootless service user cannot traverse.
+cd /
 
 # flock releases automatically, including after crashes and reboot.
 exec 9>/run/werc-oci-deploy.lock
