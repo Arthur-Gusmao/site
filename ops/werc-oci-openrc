@@ -70,22 +70,28 @@ verify_container() {
 
 ensure_ready() {
     name=$1
+    max_attempts=${2:-8}
+    attempt=1
+    logfile=/var/log/werc-oci.log
 
-    running=$(podman_aw inspect \
-        -f '{{.State.Running}}' "$name" 2>/dev/null) || return 1
+    while [ "$attempt" -le "$max_attempts" ]; do
+        running=$(podman_aw inspect             -f '{{.State.Running}}' "$name"             2>>"$logfile") || running=''
 
-    if [ "$running" != true ]; then
-        podman_aw start "$name" >/dev/null || return 1
-    fi
+        if [ "$running" != true ]; then
+            if ! podman_aw start "$name" >>"$logfile" 2>&1; then
+                printf '%s: %s start failed (attempt %s)\\n'                     "$(date -Is)" "$name" "$attempt"                     >>"$logfile"
+            fi
+        fi
 
-    i=0
-    while [ "$i" -lt 20 ]; do
         if verify_container "$name"; then
             return 0
         fi
-        i=$((i + 1))
-        sleep 1
+
+        sleep 2
+        attempt=$((attempt + 1))
     done
+
+    printf '%s: %s failed readiness verification\\n'         "$(date -Is)" "$name" >>"$logfile"
 
     return 1
 }
@@ -124,7 +130,7 @@ start() {
     esac
 
     if podman_aw container exists "$standby"; then
-        if ensure_ready "$standby"; then
+        if ensure_ready "$standby" 2; then
             einfo "Standby container $standby is ready"
         else
             ewarn "Standby $standby is unavailable"
