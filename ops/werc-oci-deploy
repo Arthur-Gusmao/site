@@ -1,0 +1,52 @@
+#!/bin/sh
+# Run from root's crontab; only fixed, root-owned scripts get privileges.
+set -eu
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+[ "$(id -u)" -eq 0 ] || { echo 'Run with doas' >&2; exit 1; }
+
+# flock releases automatically, including after crashes and reboot.
+exec 9>/run/werc-oci-deploy.lock
+flock -n 9 || exit 0
+[ ! -e /etc/werc-oci/paused ] || exit 0
+
+podman_werc() {
+    su-exec werc env HOME=/var/lib/werc USER=werc LOGNAME=werc /usr/local/sbin/werc-podman "$@"
+}
+
+active=$(cat /etc/werc-oci/active-slot)
+case "$active" in
+    blue) name=werc-blue; next=green ;;
+    green) name=werc-green; next=blue ;;
+    legacy) name=; next=green ;;
+    *) echo 'Invalid active slot' >&2; exit 1 ;;
+esac
+
+# Recover a crashed container even when the network is unavailable.
+if [ -n "$name" ]; then
+    running=$(podman_werc inspect -f '{{.State.Running}}' "$name")
+    [ "$running" = true ] || podman_werc start "$name"
+    current=$(podman_werc inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$name")
+else
+    current=
+fi
+
+latest=$(busybox timeout 30 git ls-remote https://github.com/Arthur-Gusmao/site.git refs/heads/master | awk '{print $1}')
+case "$latest" in
+    ''|*[!0123456789abcdef]*) echo 'Cannot read master revision' >&2; exit 1 ;;
+esac
+[ "${#latest}" -eq 40 ] || exit 1
+[ "$current" != "$latest" ] || exit 0
+
+# An unpublished image means CI is still running or failed. Keep production.
+if ! podman_werc manifest inspect "ghcr.io/arthur-gusmao/site:$latest" >/dev/null 2>&1; then
+    echo "Waiting for CI image: $latest"
+    exit 0
+fi
+
+echo "$(date -Is): deploying $latest to $next"
+su-exec werc env HOME=/var/lib/werc USER=werc LOGNAME=werc /usr/local/sbin/werc-oci-stage "$next" "$latest"
+
+# Do not promote a commit overtaken while it was being downloaded.
+head=$(busybox timeout 30 git ls-remote https://github.com/Arthur-Gusmao/site.git refs/heads/master | awk '{print $1}')
+[ "$head" = "$latest" ] || { echo 'Master changed; retry next minute'; exit 0; }
+/usr/local/sbin/werc-oci-promote "$next"

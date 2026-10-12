@@ -1,17 +1,27 @@
-name: Build OCI image
+name: CI
 
 on:
   push:
     branches:
       - master
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   image:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      packages: write
 
     env:
       IMAGE: ghcr.io/arthur-gusmao/site:${{ github.sha }}
@@ -21,11 +31,28 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: true
+          persist-credentials: false
+
+      - name: Verify rootless Podman
+        run: |
+          set -eu
+          if ! command -v podman >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y podman
+          fi
+          test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
+
+      - name: Validate operations scripts
+        run: |
+          set -eu
+          for script in ops/werc-* ops/cloudflared-openrc; do
+            sh -n "$script"
+          done
 
       - name: Build OCI image
         run: |
           set -eu
-          docker build \
+          podman build \
             --build-arg "REVISION=$GITHUB_SHA" \
             --file container/Containerfile \
             --tag "$IMAGE" \
@@ -34,7 +61,7 @@ jobs:
       - name: Validate image
         run: |
           set -eu
-          docker run --rm \
+          podman run --rm \
             --entrypoint /bin/sh \
             "$IMAGE" -ec '
               test -x /srv/werc/bin/werc.rc
@@ -48,14 +75,14 @@ jobs:
         run: |
           set -eu
 
-          CID=$(docker run -d \
+          CID=$(podman run -d \
             -p 127.0.0.1:18083:8080 \
             "$IMAGE")
 
-          trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+          trap 'podman logs "$CID" || true; podman rm -f "$CID" >/dev/null 2>&1 || true' EXIT
 
-          for i in 1 2 3 4 5; do
-            if curl -fsS \
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS --max-time 5 \
               -H 'Host: arthurgusmao.com.br' \
               -o /tmp/werc-index.html \
               http://127.0.0.1:18083/; then
@@ -66,18 +93,19 @@ jobs:
 
           grep -F '<h1>Arthur Gusmão</h1>' /tmp/werc-index.html
 
-          curl -fsS \
-            -H 'Host: arthurgusmao.com.br' \
-            -o /dev/null \
-            http://127.0.0.1:18083/pub/style/style.css
+          for path in about/ projects/ notes/ pub/style/style.css pub/fonts/oxanium.woff2; do
+            curl -fsS --max-time 5 \
+              -H 'Host: arthurgusmao.com.br' \
+              -o /dev/null "http://127.0.0.1:18083/$path"
+          done
 
-          REVISION=$(curl -fsS \
+          REVISION=$(curl -fsS --max-time 5 \
             -H 'Host: arthurgusmao.com.br' \
             http://127.0.0.1:18083/pub/meta/revision.txt)
 
           test "$REVISION" = "$GITHUB_SHA"
 
-          STATUS=$(curl -sS \
+          STATUS=$(curl -sS --max-time 5 \
             -H 'Host: arthurgusmao.com.br' \
             -o /dev/null \
             -w '%{http_code}' \
@@ -86,14 +114,15 @@ jobs:
           test "$STATUS" = 403
 
       - name: Publish to GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
 
           printf '%s' "$GHCR_TOKEN" |
-            docker login ghcr.io \
+            podman login ghcr.io \
               -u "$GITHUB_ACTOR" \
               --password-stdin
 
-          docker push "$IMAGE"
+          podman push "$IMAGE"

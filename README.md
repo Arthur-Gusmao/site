@@ -14,8 +14,11 @@ dependencies.
 ## Development
 
 The website uses werc to render Markdown on request.
-Changes to pages and styles generally do not require
-restarting the web server.
+Production runs from immutable OCI images. Each change to `master` builds
+and tests an image before the notebook deploys it. Pull requests run the
+same checks without publishing or deploying.
+
+See [the server guide](ops/README.md) for installation, status and rollback.
 
 ## License
 

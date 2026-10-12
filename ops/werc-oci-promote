@@ -44,8 +44,15 @@ case "$old" in
         ;;
 esac
 
-backup=$(mktemp /etc/werc-oci/Caddyfile.backup.XXXXXX)
-candidate=$(mktemp /etc/caddy/Caddyfile.candidate.XXXXXX)
+# Do not switch slots while the rootless staging process replaces one.
+if [ -d /run/werc-oci/werc-oci-stage.lock ]; then
+    echo "OCI staging is in progress; promotion refused" >&2
+    rmdir "$lock"
+    exit 1
+fi
+
+backup=
+candidate=
 armed=0
 
 set_slot() {
@@ -133,10 +140,16 @@ private_status=$(curl -sS --max-time 5 \
     -o /dev/null -w '%{http_code}' \
     "$origin/_werc/config")
 
-[ "$private_status" = 403 ] || {
-    echo "Private configuration is not protected" >&2
-    exit 1
-}
+case "$private_status:$target" in
+    403:*|404:legacy) : ;;
+    *)
+        echo "Private configuration is not protected (HTTP $private_status)" >&2
+        exit 1
+        ;;
+esac
+
+backup=$(mktemp /etc/werc-oci/Caddyfile.backup.XXXXXX)
+candidate=$(mktemp /etc/caddy/Caddyfile.candidate.XXXXXX)
 
 cp -p "$conf" "$backup"
 
