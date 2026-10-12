@@ -14,8 +14,9 @@ dependencies.
 ## Development
 
 The website uses werc to render Markdown on request.
-Changes to pages and styles generally do not require
-restarting the web server.
+Production runs from immutable OCI images. Publishing source changes
+requires building, staging and promoting a new image; switching slots
+does not require restarting Caddy.
 
 ## License
 

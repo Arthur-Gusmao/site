@@ -133,10 +133,13 @@ private_status=$(curl -sS --max-time 5 \
     -o /dev/null -w '%{http_code}' \
     "$origin/_werc/config")
 
-[ "$private_status" = 403 ] || {
-    echo "Private configuration is not protected" >&2
-    exit 1
-}
+case "$private_status:$target" in
+    403:*|404:legacy) : ;;
+    *)
+        echo "Private configuration is not protected (HTTP $private_status)" >&2
+        exit 1
+        ;;
+esac
 
 cp -p "$conf" "$backup"
 

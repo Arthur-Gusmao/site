@@ -75,11 +75,15 @@ ensure_ready() {
     logfile=/var/log/werc-oci.log
 
     while [ "$attempt" -le "$max_attempts" ]; do
-        running=$(podman_aw inspect             -f '{{.State.Running}}' "$name"             2>>"$logfile") || running=''
+        running=$(podman_aw inspect \
+            -f '{{.State.Running}}' "$name" \
+            2>>"$logfile") || running=''
 
         if [ "$running" != true ]; then
             if ! podman_aw start "$name" >>"$logfile" 2>&1; then
-                printf '%s: %s start failed (attempt %s)\\n'                     "$(date -Is)" "$name" "$attempt"                     >>"$logfile"
+                printf '%s: %s start failed (attempt %s)\n' \
+                    "$(date -Is)" "$name" "$attempt" \
+                    >>"$logfile"
             fi
         fi
 
@@ -87,15 +91,19 @@ ensure_ready() {
             return 0
         fi
 
+        printf '%s: %s not ready (attempt %s/%s)\n' \
+            "$(date -Is)" "$name" "$attempt" "$max_attempts" \
+            >>"$logfile"
+
+        [ "$attempt" -eq "$max_attempts" ] && break
         sleep 2
         attempt=$((attempt + 1))
     done
 
-    printf '%s: %s failed readiness verification\\n'         "$(date -Is)" "$name" >>"$logfile"
-
+    printf '%s: %s failed readiness verification\n' \
+        "$(date -Is)" "$name" >>"$logfile"
     return 1
 }
-
 start_pre() {
     checkpath -d -m 0700 -o aw:aw /run/user/1000
 }
