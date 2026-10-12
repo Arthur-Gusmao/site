@@ -1,0 +1,92 @@
+name: Build OCI image
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE: ghcr.io/arthur-gusmao/site:${{ github.sha }}
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Build OCI image
+        run: |
+          set -eu
+          docker build \
+            --file container/Containerfile \
+            --tag "$IMAGE" \
+            .
+
+      - name: Validate image
+        run: |
+          set -eu
+          docker run --rm \
+            --entrypoint /bin/sh \
+            "$IMAGE" -ec '
+              test -x /srv/werc/bin/werc.rc
+              test -x /usr/lib/plan9/bin/rc
+              test -s /srv/werc/sites/arthurgusmao.com.br/index.md
+              test ! -e /srv/werc/sites/arthurgusmao.com.br/_werc/config
+              /usr/sbin/lighttpd -tt -f /etc/lighttpd/lighttpd.conf
+            '
+
+      - name: HTTP smoke test
+        run: |
+          set -eu
+
+          CID=$(docker run -d \
+            -p 127.0.0.1:18083:8080 \
+            "$IMAGE")
+
+          trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+
+          for i in 1 2 3 4 5; do
+            if curl -fsS \
+              -H 'Host: arthurgusmao.com.br' \
+              -o /tmp/werc-index.html \
+              http://127.0.0.1:18083/; then
+              break
+            fi
+            sleep 2
+          done
+
+          grep -F '<h1>Arthur Gusmão</h1>' /tmp/werc-index.html
+
+          curl -fsS \
+            -H 'Host: arthurgusmao.com.br' \
+            -o /dev/null \
+            http://127.0.0.1:18083/pub/style/style.css
+
+          STATUS=$(curl -sS \
+            -H 'Host: arthurgusmao.com.br' \
+            -o /dev/null \
+            -w '%{http_code}' \
+            http://127.0.0.1:18083/_werc/config)
+
+          test "$STATUS" = 403
+
+      - name: Publish to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+
+          printf '%s' "$GHCR_TOKEN" |
+            docker login ghcr.io \
+              -u "$GITHUB_ACTOR" \
+              --password-stdin
+
+          docker push "$IMAGE"

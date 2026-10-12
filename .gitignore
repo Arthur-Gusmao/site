@@ -17,3 +17,7 @@
 # Local data
 *.sqlite
 *.db
+
+site/_werc/config
+
+container/*.bak

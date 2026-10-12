@@ -1,0 +1,45 @@
+FROM docker.io/library/alpine:3.24
+
+RUN apk add --no-cache \
+    lighttpd \
+    plan9port \
+    gawk
+
+RUN addgroup -S -g 1000 web \
+    && adduser -S -D -H -u 1000 -G web web
+
+ENV PLAN9=/usr/lib/plan9
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/plan9/bin
+
+LABEL org.opencontainers.image.source="https://github.com/Arthur-Gusmao/site"
+WORKDIR /srv/werc
+
+COPY --chown=1000:1000 vendor/werc/ /srv/werc/
+
+COPY --chown=1000:1000 site/ \
+    /srv/werc/sites/arthurgusmao.com.br/
+
+COPY --chown=1000:1000 pub/ /srv/werc/pub/
+
+COPY --chmod=0644 container/initrc.local \
+    /srv/werc/etc/initrc.local
+
+COPY --chmod=0644 container/lighttpd.conf \
+    /etc/lighttpd/lighttpd.conf
+
+RUN set -eux; \
+    test -f /srv/werc/bin/werc.rc; \
+    test -x /usr/lib/plan9/bin/rc; \
+    /bin/sed -i \
+      '1s|^#!.*|#!/usr/lib/plan9/bin/rc|' \
+      /srv/werc/bin/werc.rc; \
+    chmod 755 /srv/werc/bin/werc.rc; \
+    chmod -R a+rX /srv/werc; \
+    mkdir -p /srv/werc/sites/arthurgusmao.com.br/_werc; \
+    test -x /srv/werc/bin/werc.rc
+
+USER 1000:1000
+
+EXPOSE 8080
+
+CMD ["/usr/sbin/lighttpd", "-D", "-f", "/etc/lighttpd/lighttpd.conf"]

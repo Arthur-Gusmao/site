@@ -1,0 +1,3 @@
+[submodule "vendor/werc"]
+	path = vendor/werc
+	url = https://github.com/szhilkin/sz-werc.git

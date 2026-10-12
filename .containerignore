@@ -1,0 +1,12 @@
+.git
+**/.git
+.github
+ops
+payload.json
+container/*.bak
+**/_werc/config
+**/.env*
+**/*.key
+**/*.pem
+
+site/_werc/config
