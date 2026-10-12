@@ -4,78 +4,60 @@
 
 ## Request path
 
-A visitor connects to `https://arthurgusmao.com.br`. Cloudflare forwards the
-request through the connected tunnel to Caddy at `http://127.0.0.1:8080`.
-Caddy sends it to the selected rootless container. Inside that container,
-lighttpd serves static assets and executes werc's `werc.rc` CGI for virtual
-pages. werc renders Markdown using its AWK formatter.
-
-The tunnel's local service speaks HTTP. Public HTTPS and the encrypted tunnel
-connection are handled separately. Caddy does not issue certificates for this
-loopback listener. The application ports are not bound to the LAN interface.
-See [Cloudflare's routing documentation](https://developers.cloudflare.com/tunnel/get-started/).
-
-## Components
-
-- Alpine supplies the operating system and package manager.
-- OpenRC orders startup and provides explicit service commands.
-- Podman creates containers without a privileged container daemon.
-- `werc` is the host service user, with home `/var/lib/werc` and no login shell.
-- Caddy runs as its packaged `caddy` user and selects the production upstream.
-- cloudflared runs through OpenRC's supervisor, using a root-readable token file.
-- BusyBox crond launches the deployment check once per minute.
-- GitHub-hosted Actions build and test changes; GHCR stores the images.
-
-## Ports and slots
-
-- `127.0.0.1:8080`: Caddy's origin listener.
-- `127.0.0.1:18085`: host port for `werc-blue`.
-- `127.0.0.1:18086`: host port for `werc-green`.
-- Container port `8080`: lighttpd, mapped by Podman to its slot's host port.
-- `127.0.0.1:18083`: temporary HTTP test port on the CI runner.
-- Caddy's default admin endpoint is local port `2019`; reload uses it.
-
-The initial proxy template is deliberately small:
+Cloudflare sends requests for `arthurgusmao.com.br` through the tunnel to
+`http://127.0.0.1:8080`. Caddy always proxies to `127.0.0.1:18085`.
+The rootless container runs lighttpd on port 8080. lighttpd serves public assets
+and executes werc to render Markdown as HTML.
 
     :8080 {
         bind 127.0.0.1
         reverse_proxy 127.0.0.1:18085
     }
 
-Promotion changes the upstream port to match the selected slot.
+Caddy does not change during deployment. Public HTTPS is handled by Cloudflare;
+the local origin speaks HTTP. The application ports bind only to loopback.
+The tunnel route is configured externally; see [Cloudflare's guide](https://developers.cloudflare.com/tunnel/get-started/).
 
-Blue and green are deployment slots, not two simultaneous production replicas.
-Only one receives normal traffic. Both may run so the older release can be
-promoted quickly. There is no automatic traffic failover to the standby slot.
+## Three container names, one running production service
 
-## Persistent and temporary state
+- `werc-site`: production, always on host port 18085.
+- `werc-site.check`: temporary candidate, on host port 18086 while testing.
+- `werc-site.previous`: stopped prior production container, retained for rollback.
 
-Image layers, container metadata, and local container logs belong to `werc`
-and live under `/var/lib/werc/.local/share/werc-oci/storage`.
-`werc-podman` always supplies the same storage, runroot, and temporary paths.
-Temporary state belongs under `/run/werc-oci`, which OpenRC creates with mode
-`0700`. It is rebuilt after reboot.
+There are no blue/green slots, active-slot file, changing upstream, or promotion
+command. The stopped backup keeps its original production port mapping.
+After candidate testing, the old production container is stopped and renamed;
+the new container takes its normal name and port. This creates a brief outage.
 
-This avoids `/run/user/UID`, whose desktop-session mounts previously hid
-runtime state. The production containers do not require a graphical login.
-Personal Podman containers use separate storage.
+## Identities
 
-The image contains the site and public assets. Production uses no host content
-bind mount, database, or application volume. Editing the checkout cannot change
-the running release until a new image is deployed.
+The host user `werc` owns Podman storage and executes deployment from its own
+crontab. Its home is `/var/lib/werc`; it has no interactive login shell.
+Root installs scripts, configures cron, and controls OpenRC. Caddy uses its
+packaged service identity. cloudflared reads a private root-owned token.
+Routine image deployment does not need root or access to Caddy's admin endpoint.
 
-## Boot and crash recovery
+Rootless namespaces use mappings in `/etc/subuid` and `/etc/subgid`.
+The installer allocates missing 65,536-ID ranges after existing allocations.
+[Podman documents the rootless requirements](https://docs.podman.io/en/stable/markdown/podman.1.html).
 
-The `werc-oci` service needs local mounts and cgroups, and starts before Caddy.
-It starts the selected container and verifies its revision, then tries the
-standby if one exists. Active readiness allows eight attempts; standby readiness
-allows two. These checks use local images and loopback HTTP.
+## Storage and boot
 
-cloudflared starts after Caddy and needs networking. Its supervisor restarts
-it after a failure, with a five-second delay and no fixed restart count.
-Cron also starts a stopped active container before checking GitHub.
-This is process recovery; a running but unhealthy application needs diagnosis.
+`werc-podman` fixes the persistent store at
+`/var/lib/werc/.local/share/werc-oci/storage`, runroot at `/run/werc-oci/storage`,
+and temporary runtime at `/run/werc-oci/libpod`. These existing paths are kept
+to avoid changing an established Podman database. They are independent of a
+personal user's storage and graphical-login mounts.
 
-Rootless user namespaces rely on subordinate IDs in `/etc/subuid` and
-`/etc/subgid`. The installer allocates a 65,536-ID range when a mapping is
-missing. See [Podman's rootless documentation](https://docs.podman.io/en/stable/markdown/podman.1.html).
+OpenRC creates `/run/werc-oci` as `werc`, mode 0700, before starting the container.
+The `werc-site` service needs local mounts and cgroups and starts before Caddy.
+It can restore an interrupted rename, start production, and retry local revision
+verification ten times. It uses local images without querying GitHub.
+
+cloudflared starts after Caddy, needs networking, and is supervised with a
+five-second restart delay. User cron also starts a stopped production container
+before checking for updates. A running but unhealthy application still requires
+diagnosis; the scheduler does not implement a general health supervisor.
+
+The site and assets are inside the image. There is no host content mount,
+application database, or persistent application volume.

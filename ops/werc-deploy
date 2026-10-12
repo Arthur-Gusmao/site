@@ -1,0 +1,133 @@
+#!/bin/sh
+# One running website container. Test first, replace it, restore on failure.
+set -eu
+
+name=werc-site
+candidate=werc-site.check
+previous=werc-site.previous
+port=18085
+test_port=18086
+host=arthurgusmao.com.br
+registry=ghcr.io/arthur-gusmao/site
+
+[ "$(id -un)" = werc ] || { echo 'Run as werc' >&2; exit 1; }
+[ "$#" -le 1 ] || { echo "Usage: $0 [SHA|rollback]" >&2; exit 2; }
+cd /
+podman() { /usr/local/sbin/werc-podman "$@"; }
+
+# The parent owns the lock; container processes never inherit it.
+if [ "${WERCD_LOCKED:-}" != 1 ]; then
+    exec env WERCD_LOCKED=1 flock --nonblock --close --conflict-exit-code 0 \
+        /run/werc-oci/deploy.lock "$0" "$@"
+fi
+if [ "$#" -eq 0 ] && [ -e /etc/werc/paused ]; then
+    exit 0
+fi
+
+# Recover a transaction interrupted after the old container was renamed.
+if ! podman container exists "$name" && podman container exists "$previous"; then
+    podman rename "$previous" "$name"
+fi
+had_old=0
+current=
+if podman container exists "$name"; then
+    had_old=1
+    podman start "$name" >/dev/null
+    current=$(podman inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$name")
+fi
+
+# Automatic deployments follow master. Explicit SHA and rollback are manual.
+if [ "${1:-}" = rollback ]; then
+    image=$(podman inspect -f '{{.Image}}' "$previous")
+    sha=$(podman inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$previous")
+else
+    if [ "$#" -eq 1 ]; then
+        sha=$1
+    else
+        sha=$(busybox timeout 30 git ls-remote https://github.com/Arthur-Gusmao/site.git refs/heads/master | awk '{print $1}')
+    fi
+    image=$registry:$sha
+fi
+case "$sha" in ''|*[!0123456789abcdef]*) echo 'Invalid SHA' >&2; exit 2 ;; esac
+[ "${#sha}" -eq 40 ] || { echo 'Expected a full commit SHA' >&2; exit 2; }
+if [ "$#" -eq 0 ] && [ "$current" = "$sha" ]; then
+    exit 0
+fi
+if [ "${1:-}" != rollback ]; then
+    podman pull "$image"
+fi
+[ "$(podman image inspect -f '{{ index .Labels "org.opencontainers.image.revision" }}' "$image")" = "$sha" ] || exit 1
+
+# This flag covers only the production replacement, not candidate testing.
+replacing=0
+cleanup() {
+    code=$?
+    trap - 0 1 2 15
+    if podman container exists "$candidate"; then
+        podman rm -f "$candidate" >/dev/null || :
+    fi
+    if [ "$code" -ne 0 ] && [ "$replacing" -eq 1 ]; then
+        echo 'Deployment failed; restoring the previous container' >&2
+        if podman container exists "$previous"; then
+            podman rm -f "$name" >/dev/null 2>&1 || :
+            podman rename "$previous" "$name" && podman start "$name" >/dev/null || \
+                echo 'URGENT: production restore failed' >&2
+        elif [ "$had_old" -eq 1 ]; then
+            podman start "$name" >/dev/null || echo 'URGENT: production restart failed' >&2
+        else
+            podman rm -f "$name" >/dev/null 2>&1 || :
+        fi
+    fi
+    exit "$code"
+}
+trap cleanup 0
+trap 'exit 129' 1
+trap 'exit 130' 2
+trap 'exit 143' 15
+
+ready() {
+    base=http://127.0.0.1:$1
+    attempt=1
+    while [ "$attempt" -le 10 ]; do
+        actual=$(curl -fsS --max-time 3 -H "Host: $host" "$base/pub/meta/revision.txt" 2>/dev/null || :)
+        if [ "$actual" = "$sha" ]; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    echo 'HTTP revision check failed' >&2
+    return 1
+}
+
+# A stale test container is never production and can be removed under the lock.
+if podman container exists "$candidate"; then
+    podman rm -f "$candidate" >/dev/null
+fi
+podman run -d --name "$candidate" --publish "127.0.0.1:$test_port:8080" "$image"
+ready "$test_port"
+for path in / /about/ /projects/ /notes/ /pub/style/style.css /pub/fonts/oxanium.woff2 /_werc/config; do
+    expected=200
+    [ "$path" != /_werc/config ] || expected=403
+    actual=$(curl -sS --max-time 5 -H "Host: $host" -o /dev/null -w '%{http_code}' "http://127.0.0.1:$test_port$path")
+    [ "$actual" = "$expected" ] || { echo "$path: HTTP $actual, expected $expected" >&2; exit 1; }
+done
+podman rm -f "$candidate" >/dev/null
+
+# Do not automatically deploy a commit overtaken during candidate testing.
+if [ "$#" -eq 0 ]; then
+    latest=$(busybox timeout 30 git ls-remote https://github.com/Arthur-Gusmao/site.git refs/heads/master | awk '{print $1}')
+    [ "$latest" = "$sha" ] || { echo 'Master changed; retry next minute'; exit 0; }
+fi
+if podman container exists "$previous"; then
+    podman rm "$previous" >/dev/null
+fi
+replacing=1
+if [ "$had_old" -eq 1 ]; then
+    podman stop "$name" >/dev/null
+    podman rename "$name" "$previous"
+fi
+podman run -d --name "$name" --publish "127.0.0.1:$port:8080" "$image"
+ready "$port"
+replacing=0
+echo "DEPLOYED: $sha"

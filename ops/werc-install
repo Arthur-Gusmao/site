@@ -36,53 +36,38 @@ for file in /etc/subuid /etc/subgid; do
     fi
 done
 
-install -d -m 0755 -o root -g root /etc/werc-oci
+install -d -m 0755 -o root -g root /etc/werc
 install -d -m 0700 -o werc -g werc /run/werc-oci
-backup=/etc/werc-oci/previous-install
+backup=/etc/werc/previous-install
 install -d -m 0700 "$backup"
-for script in werc-podman werc-oci-stage werc-oci-promote werc-oci-deploy; do
+for script in werc-podman werc-deploy; do
     [ ! -f "/usr/local/sbin/$script" ] || cp -p "/usr/local/sbin/$script" "$backup/"
     install -m 0755 -o root -g root "$script" "/usr/local/sbin/$script"
 done
-[ ! -f /etc/init.d/werc-oci ] || cp -p /etc/init.d/werc-oci "$backup/"
-install -m 0755 -o root -g root werc-oci-openrc /etc/init.d/werc-oci
+[ ! -f /etc/init.d/werc-site ] || cp -p /etc/init.d/werc-site "$backup/"
+install -m 0755 -o root -g root werc-site-openrc /etc/init.d/werc-site
 [ ! -f /etc/init.d/cloudflared ] || cp -p /etc/init.d/cloudflared "$backup/"
 install -m 0755 -o root -g root cloudflared-openrc /etc/init.d/cloudflared
 
-if [ ! -f /etc/werc-oci/active-slot ]; then
-    echo none > /etc/werc-oci/active-slot
-    install -d -m 0755 /etc/caddy
-    [ ! -f /etc/caddy/Caddyfile ] || cp -p /etc/caddy/Caddyfile "$backup/"
-    # This installer provisions the notebook as this site's server.
-    cp Caddyfile /etc/caddy/Caddyfile
-    chmod 0644 /etc/caddy/Caddyfile
-fi
-chmod 0644 /etc/werc-oci/active-slot
-if [ ! -f /etc/caddy/Caddyfile ]; then
-    install -d -m 0755 /etc/caddy
-    case "$(cat /etc/werc-oci/active-slot)" in
-        blue|none) port=18085 ;;
-        green) port=18086 ;;
-        *) echo 'Invalid active slot' >&2; exit 1 ;;
-    esac
-    sed "s/:18085/:$port/" Caddyfile > /etc/caddy/Caddyfile
-    chmod 0644 /etc/caddy/Caddyfile
-fi
+install -d -m 0755 /etc/caddy
+[ ! -f /etc/caddy/Caddyfile ] || cp -p /etc/caddy/Caddyfile "$backup/"
+install -m 0644 -o root -g root Caddyfile /etc/caddy/Caddyfile
 install -d -m 0700 -o root -g root /etc/cloudflared
 
-# Add exactly one scheduled deployment. Existing cron jobs stay intact.
-cron='* * * * * /usr/local/sbin/werc-oci-deploy 2>&1 | /usr/bin/logger -t werc-deploy'
-touch /etc/crontabs/root
-if ! grep -Fq '/usr/local/sbin/werc-oci-deploy' /etc/crontabs/root; then
-    printf '\n%s\n' "$cron" >> /etc/crontabs/root
-fi
-# BusyBox crond detects directory changes; editing a file alone can wait an hour.
+# A dedicated user crontab: deployment never needs root.
+cat > /etc/crontabs/werc <<'CRON'
+SHELL=/bin/sh
+* * * * * /usr/local/sbin/werc-deploy 2>&1 | /usr/bin/logger -t werc-deploy
+CRON
+chown root:root /etc/crontabs/werc
+chmod 0600 /etc/crontabs/werc
 touch /etc/crontabs
 rc-update add cgroups default
-rc-update add werc-oci default
+rc-update add werc-site default
 rc-update add caddy default
 rc-update add cloudflared default
 rc-update add crond default
 rc-service crond start
 echo "Installed. Previous scripts: $backup"
-echo 'Run: rc-service werc-oci restore; werc-oci-deploy'
+echo 'Run: rc-service caddy start; rc-service cloudflared start'
+echo 'Run: su-exec werc env HOME=/var/lib/werc werc-deploy; rc-service werc-site start'

@@ -54,6 +54,7 @@ The foreground container is removed when stopped. Stop it before reusing its
 name or port. A local build can include uncommitted files even though its marker
 uses `HEAD`; do not treat that marker alone as evidence of a clean build.
 CI starts from the checked-out commit and uses its own revision.
+Do not use the production test port 18086 for unrelated local development.
 
 ## Change and review
 

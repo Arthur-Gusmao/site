@@ -1,45 +1,36 @@
 # Portable site server
 
-This is the complete operating guide for my personal website on an Alpine Linux
-notebook. The design uses plain files, small shell scripts, rootless containers,
-and existing Unix services. All documentation is in English.
+A small website server on an Alpine Linux notebook, with plain shell scripts
+that can be read from beginning to end. All documentation is in English.
 
-    Browser -> Cloudflare Tunnel -> Caddy -> lighttpd -> werc -> HTML
-    GitHub  -> CI tests -> GHCR -> scheduled check -> stage -> promote
+    Browser -> Cloudflare Tunnel -> Caddy -> one rootless website container
+    GitHub -> CI -> GHCR -> user cron -> one deployment script
 
-## Read the guide
+## Read the documentation
 
-- [Architecture](/notes/server/architecture/): components, users, ports, storage, and boot.
-- [Installation](/notes/server/installation/): reproduce the server on another machine.
-- [CI/CD](/notes/server/cicd/): pull requests, image publishing, staging, and promotion.
+- [Audit guide](/notes/server/audit/): the shortest path through the actual code.
+- [Architecture](/notes/server/architecture/): components, identities, ports, and storage.
+- [Installation](/notes/server/installation/): reproduce the server and start the tunnel.
+- [CI/CD](/notes/server/cicd/): PR tests, publishing, and deployment.
 - [Operations](/notes/server/operations/): status, logs, manual deployment, and maintenance.
-- [Development](/notes/server/development/): content, templates, local builds, and contributing.
-- [Recovery](/notes/server/recovery/): rollback, missing containers, host migration, and backups.
-- [Troubleshooting](/notes/server/troubleshooting/): diagnose each layer of the system.
-- [Reference](/notes/server/reference/): every operational file, command, and dependency.
-- [Design decisions](/notes/server/decisions/): the problems fixed, the cleanup, and practical limits.
+- [Development](/notes/server/development/): edit pages, templates, and scripts.
+- [Recovery](/notes/server/recovery/): rollback, interrupted updates, and rebuilding.
+- [Troubleshooting](/notes/server/troubleshooting/): diagnose the request path.
+- [Reference](/notes/server/reference/): every operational file and command.
+- [Design decisions](/notes/server/decisions/): what was removed and the tradeoffs.
 
-## The everyday workflow
+## Everyday workflow
 
-Edit the repository, open a pull request, and wait for `CI / image`.
-Merge into `master` to build and publish the production image. The notebook
-checks for updates every minute, downloads the image, tests the inactive
-container, and reloads Caddy to switch traffic. The previous active container
-remains available for rollback.
+Edit the repository, open a PR, and wait for `CI / image`. Merge to `master`
+to publish an image. The notebook checks once per minute, tests a temporary
+candidate, and restarts the production container with the new image.
+Updates have a brief restart window. A failed replacement restores the old container.
 
-## Scope and source of truth
+Host-script changes require running the installer from a reviewed checkout.
+Publishing an image changes the website, not the installed host scripts.
+The [repository](https://github.com/Arthur-Gusmao/site) is the source of truth.
 
-This guide describes the implementation in
-[Arthur-Gusmao/site](https://github.com/Arthur-Gusmao/site), not a generic
-container platform. The domain and service paths are specific to this site.
-The scripts under `ops/` and the workflow under `.github/workflows/` are the
-source of truth. Host-script updates require reinstalling them; publishing
-an image updates the website only.
-
-The environment inspected on October 12, 2026 used Alpine edge
-`3.25.0_alpha20260805`, OpenRC, Podman `6.1.3`, Caddy `2.11.4`, and cloudflared
-`2026.10.0`. These are a dated inventory, not a promise that host packages
-will always have those versions. The image starts from `alpine:3.24`.
-
-Credentials, account identifiers from the tunnel token, private configuration,
-and recovery-archive contents are deliberately excluded from public documentation.
+The inspected notebook uses Alpine edge, OpenRC, Podman, Caddy, and cloudflared.
+The website image starts from Alpine 3.24. Package versions can change, so this
+is a reproducible configuration and procedure, not a byte-identical build promise.
+Private credentials and recovery-archive contents are not published here.

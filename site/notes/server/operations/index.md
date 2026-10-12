@@ -2,86 +2,71 @@
 
 [Server guide](/notes/server/)
 
-## Status and revision
+## Status
 
-    doas rc-service werc-oci verify
+    doas rc-service werc-site verify
     doas rc-service caddy status
     doas rc-service cloudflared status
-    doas cat /etc/werc-oci/active-slot
     doas su-exec werc env HOME=/var/lib/werc werc-podman ps -a
     curl -fsS https://arthurgusmao.com.br/pub/meta/revision.txt
 
-`verify` checks the active container process and its local HTTP revision against
-the OCI label. It does not verify every page or the public tunnel. Compare the
-public marker with GitHub's current production commit when investigating a deploy.
-
-Use `werc-podman` with the service identity for every production container
-command. Plain `podman` as a personal user, or `doas podman` as root, points to
-another store and cannot reliably describe this service.
+Service verification compares the local production marker with the container's
+image label. It does not verify the tunnel or every page. Use the production
+wrapper as `werc`; personal Podman and rootful Podman use other stores.
 
 ## Logs
 
     doas tail -50 /var/log/messages
-    doas tail -50 /var/log/werc-oci.log
     doas tail -50 /var/log/cloudflared.log
     doas tail -50 /var/log/cloudflared.err
-    doas su-exec werc env HOME=/var/lib/werc werc-podman logs --tail 50 werc-blue
-    doas su-exec werc env HOME=/var/lib/werc werc-podman logs --tail 50 werc-green
+    doas su-exec werc env HOME=/var/lib/werc werc-podman logs --tail 50 werc-site
 
-Cron output is tagged `werc-deploy` in system logs. OpenRC restoration diagnostics
-use `werc-oci.log`. Container stderr contains lighttpd diagnostics. The custom
-log files do not have a dedicated rotation policy in this repository; monitor
-their size and configure host log rotation if needed. Do not assume bounded
-log retention just because configuration backups are bounded.
+Cron output has the `werc-deploy` tag. Service-start errors also appear in the
+command's output. Tunnel and container logs need a host retention policy; the
+repository does not install a dedicated rotation policy.
 
-## Trigger or pause deployment
+## Deploy and pause
 
-    doas werc-oci-deploy
+    doas su-exec werc env HOME=/var/lib/werc werc-deploy
+    doas touch /etc/werc/paused
+    doas rm /etc/werc/paused
 
-This checks current `master`; it does not accept an arbitrary deployment SHA.
-No output may mean the active release is already current, deployment is paused,
-or another check holds the lock. Inspect the state and logs to distinguish them.
+The first command checks current master. The pause file prevents automatic
+checks, including their stopped-container recovery step. It does not cancel an
+already running transaction. Let that transaction finish before manual work.
+Explicit SHA and rollback commands ignore the pause file deliberately.
 
-    doas touch /etc/werc-oci/paused
-    doas rm /etc/werc-oci/paused
+## Manual update and rollback
 
-The first command pauses automatic deployment; the second resumes it. Pause
-before rollback or manual slot work. A check already in progress is not cancelled
-by creating the pause file, so let it finish before changing the containers.
+    doas su-exec werc env HOME=/var/lib/werc werc-deploy FULL_40_CHARACTER_SHA
 
-## Manual staging and promotion
+Use a trusted release whose image has passed CI. An explicit SHA forces a
+replacement even when the current revision matches; it uses the same candidate
+checks and failure cleanup.
 
-Use a full SHA whose image has already passed CI. Inspect the current active
-slot, choose the other slot, then run:
+    doas touch /etc/werc/paused
+    doas su-exec werc env HOME=/var/lib/werc werc-deploy rollback
 
-    doas su-exec werc env HOME=/var/lib/werc werc-oci-stage green FULL_40_CHARACTER_SHA
-    doas werc-oci-promote green
+Rollback tests the stopped previous container's exact local image, then replaces
+production. It can work without registry access. Keep the scheduler paused while
+investigating; resuming it follows master again.
 
-These are examples for a blue-active server. Replace `green` with `blue` when
-green is active. Manual promotion is explicit and can select an older revision;
-resuming the scheduler will move production back to current `master`.
-
-## Restore, update, and clean
-
-    doas rc-service werc-oci restore
-
-Restore starts and verifies the active container and attempts the existing
-standby without stopping production. Restarting the whole service stops both
-containers first and can interrupt service; prefer `restore` for recovery.
-
-For host-script changes, review the checkout and rerun the installer. A pushed
-website image does not modify `/usr/local/sbin` or `/etc/init.d`.
+## Host maintenance
 
     git pull --ff-only
     git submodule update --init --recursive
-    doas sh ops/werc-oci-install
+    doas sh ops/werc-install
 
-To reclaim unused service images deliberately:
+Host scripts change only when installed from a reviewed checkout. Caddy's fixed
+configuration and the service user's cron file are managed by the installer.
+Starting `werc-site` recovers a stopped or interrupted production container.
+Restarting it deliberately interrupts service.
 
+    doas rc-service werc-site start
     doas su-exec werc env HOME=/var/lib/werc werc-podman image prune -a
     df -h /var/lib/werc
 
-Podman retains images referenced by containers. Keep both slot containers when
-rollback matters. Do not run `system reset` as routine cleanup. Host-package
-upgrades and cloudflared upgrades are separate maintenance tasks; cloudflared's
+Pruning retains images referenced by containers. Keep `werc-site.previous` when
+rollback matters. Do not use `system reset` for ordinary cleanup.
+Host packages and cloudflared updates are separate maintenance tasks; the tunnel
 service disables self-updates and the installer preserves an existing binary.

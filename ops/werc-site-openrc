@@ -1,0 +1,49 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh disable=SC2034
+description="Rootless website container"
+extra_commands="verify"
+name=werc-site
+podman_werc() {
+    su-exec werc env HOME=/var/lib/werc /usr/local/sbin/werc-podman "$@"
+}
+depend() {
+    need localmount cgroups
+    before caddy
+}
+start_pre() {
+    checkpath -d -m 0700 -o werc:werc /run/werc-oci
+}
+verify() {
+    [ "$(podman_werc inspect -f '{{.State.Running}}' "$name")" = true ] || return 1
+    expected=$(podman_werc inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$name") || return 1
+    case "$expected" in ''|*[!0123456789abcdef]*) return 1 ;; esac
+    [ "${#expected}" -eq 40 ] || return 1
+    actual=$(curl -fsS --max-time 3 -H 'Host: arthurgusmao.com.br' \
+        http://127.0.0.1:18085/pub/meta/revision.txt) || return 1
+    [ "$actual" = "$expected" ]
+}
+start() {
+    if ! podman_werc container exists "$name"; then
+        if podman_werc container exists "$name.previous"; then
+            podman_werc rename "$name.previous" "$name" || return 1
+        else
+            einfo 'Waiting for the first deployment'
+            return 0
+        fi
+    fi
+    ebegin "Starting $name"
+    podman_werc start "$name" || { eend 1; return 1; }
+    attempt=1
+    while [ "$attempt" -le 10 ]; do
+        if verify; then eend 0; return 0; fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    eend 1 'HTTP revision check failed'
+    return 1
+}
+status() { verify; }
+stop() {
+    podman_werc container exists "$name" || return 0
+    podman_werc stop "$name"
+}

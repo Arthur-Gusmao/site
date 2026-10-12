@@ -2,89 +2,68 @@
 
 [Server guide](/notes/server/)
 
-## Roll back one release
+## Restore the last release
 
-Pause the scheduler and let any running deployment finish. Check which slot is
-active and confirm the other slot is the version you want:
+Pause the automatic checks, let any transaction finish, and inspect production
+and its stopped backup:
 
-    doas touch /etc/werc-oci/paused
-    doas cat /etc/werc-oci/active-slot
+    doas touch /etc/werc/paused
     doas su-exec werc env HOME=/var/lib/werc werc-podman ps -a
-
-If green is active and blue holds the previous release:
-
-    doas werc-oci-promote blue
-    doas rc-service werc-oci verify
+    doas su-exec werc env HOME=/var/lib/werc werc-deploy rollback
+    doas rc-service werc-site verify
     curl -fsS https://arthurgusmao.com.br/pub/meta/revision.txt
 
-Promotion runs health checks and validates the public revision. Keep the pause
-file while investigating. Remove it to resume deployment of current `master`.
-A successful stage replaces the inactive slot, so it can replace the older
-rollback candidate before promotion; two slots are not a full release archive.
+Rollback reads the previous container's exact image ID, tests it on the temporary
+port, and uses the normal replacement procedure. The former production release
+then becomes the stopped backup. Resume automatic deployment by removing the
+pause file when you want master to be current again.
 
-## Recover a stopped or missing container
+## Interrupted updates
 
-For an existing stopped container, use:
+If production is missing and `werc-site.previous` exists, startup renames the
+backup to production and starts it. Both OpenRC and the deploy script handle
+this case without consulting GitHub.
 
-    doas rc-service werc-oci restore
+If production exists but is stopped, startup starts it. A running but unhealthy
+container is not automatically rolled back by the next matching-SHA check;
+inspect logs and use explicit rollback if a valid backup remains.
 
-If the selected container is missing, automatic recovery cannot recreate it
-from the state marker alone. Pause deployment, inspect both slots and their
-image labels, then either promote an existing healthy slot or reconstruct the
-missing one. The container must be named `werc-blue` on port `18085`, or
-`werc-green` on port `18086`, using the trusted SHA-tagged image.
+A leftover `werc-site.check` is only a test container. The next deployment removes
+it under its exclusive lock before testing. Do not manually remove containers
+while another deployment is running. The lock file's existence alone does not
+mean a process owns the lock; inspect running processes first.
 
-An explicit reconstruction example for a missing blue container is:
+The replacement exit trap handles normal errors and handled signals. An abrupt
+kill can bypass it, which is why startup also recognizes a missing production
+container with an existing backup.
 
-    doas su-exec werc env HOME=/var/lib/werc werc-podman run -d --name werc-blue -p 127.0.0.1:18085:8080 ghcr.io/arthur-gusmao/site:FULL_40_CHARACTER_SHA
-    doas rc-service werc-oci restore
+## Missing container and no backup
 
-Do this only after confirming that the name and port are free and that the SHA
-is the intended trusted release. Verify through the public domain before resuming.
+Pause deployment, inspect the local images, and deploy a trusted known-good SHA
+explicitly. If network access is unavailable, inspect the exact local image ID
+and recreate the container with its fixed name and port:
 
-## Configuration mismatch
+    doas su-exec werc env HOME=/var/lib/werc werc-podman run -d --name werc-site -p 127.0.0.1:18085:8080 TRUSTED_LOCAL_IMAGE_ID
+    doas rc-service werc-site verify
 
-The state marker and Caddy upstream must agree. Blue means `18085`; green means
-`18086`. Do not change the marker alone. A failed promotion normally restores
-both. If Caddy reload or filesystem restoration failed, pause the scheduler and
-inspect `Caddyfile.previous`, the current file, both containers, and the logs.
-Validate a corrected Caddyfile, restore a matching marker, and reload before
-running verification. Do not assume the previous file always describes the
-currently desired release.
+Confirm the name and port are free before using this recovery example.
+Do not invent a marker file or change Caddy to match an arbitrary new port.
 
-## Interrupted staging
+## Backups and rebuilding
 
-A leftover `werc-blue.previous` or `werc-green.previous` can indicate interruption
-outside the shell's cleanup traps. The staging script deliberately refuses to
-continue when that backup exists. Inspect the normal name, backup name, running
-state, and revisions before removing or renaming anything. Never operate on the
-active slot as though it were standby.
+Git preserves source and the pinned submodule. GHCR preserves published images
+subject to registry retention. The stopped previous container is one release of
+rollback, not an off-machine backup or a complete release history.
 
-Stage and promotion directory locks are cleaned on normal exits and handled
-signals. An abrupt kill or power failure can leave a persistent promotion lock.
-Confirm that no deployment, stage, or promotion process is running before
-removing a stale directory lock. The outer `flock` lock releases when its owning
-process exits; the existence of its file alone does not mean it is locked.
+The installer retains one previous script/configuration set in
+`/etc/werc/previous-install`. Private migration archives are kept under
+`/var/backups`; their contents are not served or published. A pre-cleanup archive
+is a recovery aid, not an ongoing backup schedule.
 
-## Backups and a new machine
+Back up the tunnel credential privately and off the notebook when disaster
+recovery matters. Rebuild on another host with the installation guide, restore
+the credential, and deploy a trusted image. Do not copy `/run` or restore Podman's
+internal runtime across machines. The application has no database or content volume.
 
-Website source and the pinned submodule are recoverable from Git. Public images
-are recoverable from GHCR while retained there. Back up the tunnel credential and
-any private host configuration separately, with private permissions and an
-off-machine copy when disaster recovery matters.
-
-The installer keeps one previous script set. Promotion keeps one previous
-Caddyfile. The one-time private archive is
-`/var/backups/site-before-legacy-cleanup.tar.gz`, owned by root with mode `0600`.
-It was made before the legacy cleanup;
-it is not an ongoing backup system, is not served by the website, and must not
-be uploaded as public content.
-
-To rebuild elsewhere, follow [installation](/notes/server/installation/), restore
-the tunnel credential privately, and deploy the trusted current image. Keep old
-connector behavior in mind when moving the same tunnel between machines;
-multiple connectors can receive traffic until the old one is stopped.
-
-Rebuilding from source does not require copying Podman's internal database.
-The service has no application database or content volume. Do not move its
-runtime directories across machines or restore `/run` from a backup.
+If the old tunnel connector still runs, Cloudflare may send traffic to both
+machines until the old connector is stopped.
