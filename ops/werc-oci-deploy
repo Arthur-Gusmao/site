@@ -38,8 +38,8 @@ esac
 [ "$current" != "$latest" ] || exit 0
 
 # An unpublished image means CI is still running or failed. Keep production.
-if ! podman_werc manifest inspect "ghcr.io/arthur-gusmao/site:$latest" >/dev/null 2>&1; then
-    echo "Waiting for CI image: $latest"
+if ! podman_werc pull --quiet "ghcr.io/arthur-gusmao/site:$latest" >/dev/null 2>&1; then
+    echo "Image unavailable; retry next minute: $latest"
     exit 0
 fi
 
