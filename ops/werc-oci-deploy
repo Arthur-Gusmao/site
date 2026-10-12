@@ -6,9 +6,11 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Cron starts in /root, which the rootless service user cannot traverse.
 cd /
 
-# flock releases automatically, including after crashes and reboot.
-exec 9>/run/werc-oci-deploy.lock
-flock -n 9 || exit 0
+# Keep the lock in flock's parent process, never in container descendants.
+if [ "${WERCD_LOCKED:-}" != 1 ]; then
+    exec env WERCD_LOCKED=1 flock --nonblock --close --conflict-exit-code 0 \
+        /run/werc-oci-deploy.lock "$0" "$@"
+fi
 [ ! -e /etc/werc-oci/paused ] || exit 0
 
 podman_werc() {
