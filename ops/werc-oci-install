@@ -38,7 +38,8 @@ done
 
 install -d -m 0755 -o root -g root /etc/werc-oci
 install -d -m 0700 -o werc -g werc /run/werc-oci
-backup=$(mktemp -d /etc/werc-oci/install-backup.XXXXXX)
+backup=/etc/werc-oci/previous-install
+install -d -m 0700 "$backup"
 for script in werc-podman werc-oci-stage werc-oci-promote werc-oci-deploy; do
     [ ! -f "/usr/local/sbin/$script" ] || cp -p "/usr/local/sbin/$script" "$backup/"
     install -m 0755 -o root -g root "$script" "/usr/local/sbin/$script"
@@ -49,18 +50,22 @@ install -m 0755 -o root -g root werc-oci-openrc /etc/init.d/werc-oci
 install -m 0755 -o root -g root cloudflared-openrc /etc/init.d/cloudflared
 
 if [ ! -f /etc/werc-oci/active-slot ]; then
-    echo legacy > /etc/werc-oci/active-slot
+    echo none > /etc/werc-oci/active-slot
     install -d -m 0755 /etc/caddy
     [ ! -f /etc/caddy/Caddyfile ] || cp -p /etc/caddy/Caddyfile "$backup/"
     # This installer provisions the notebook as this site's server.
-    sed 's/:18085/:8081/' Caddyfile > /etc/caddy/Caddyfile
+    cp Caddyfile /etc/caddy/Caddyfile
     chmod 0644 /etc/caddy/Caddyfile
 fi
 chmod 0644 /etc/werc-oci/active-slot
 if [ ! -f /etc/caddy/Caddyfile ]; then
     install -d -m 0755 /etc/caddy
-    # Bootstrap before the first image is promoted; no legacy server required.
-    sed 's/:18085/:8081/' Caddyfile > /etc/caddy/Caddyfile
+    case "$(cat /etc/werc-oci/active-slot)" in
+        blue|none) port=18085 ;;
+        green) port=18086 ;;
+        *) echo 'Invalid active slot' >&2; exit 1 ;;
+    esac
+    sed "s/:18085/:$port/" Caddyfile > /etc/caddy/Caddyfile
     chmod 0644 /etc/caddy/Caddyfile
 fi
 install -d -m 0700 -o root -g root /etc/cloudflared

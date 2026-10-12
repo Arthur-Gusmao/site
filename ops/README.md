@@ -1,19 +1,18 @@
-# Servidor do site
+# Site server
 
 ```text
-PR → GitHub Actions → build rootless + testes HTTP
-master → mesmos testes → GHCR (imagem com SHA do commit)
-notebook → cron a cada minuto → stage → testes → Caddy reload
-visitante → Cloudflare Tunnel → Caddy → container rootless
+PR     -> GitHub Actions -> rootless build and HTTP tests
+master -> the same tests -> GHCR image tagged with the commit SHA
+server -> check every minute -> stage -> test -> Caddy reload
+browser -> Cloudflare Tunnel -> Caddy -> rootless container
 ```
 
-O usuário `werc` executa Podman sem root e sem acesso à sessão gráfica.
-O root só instala os serviços e troca a configuração do Caddy, usando
-scripts locais de propriedade do root. O servidor não executa scripts
-baixados do GitHub. Não precisa de runner local, webhook, chave SSH
-de deploy ou secret do GitHub. A imagem GHCR deve ser pública.
+The `werc` service user owns the containers. Root installs trusted local
+scripts and reloads Caddy. Production storage and runtime are independent
+of desktop login sessions. The server never runs deployment scripts from
+an incoming image or pull request.
 
-## Instalar no Alpine/OpenRC
+## Install on Alpine / OpenRC
 
 ```sh
 git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
@@ -21,40 +20,40 @@ cd site
 doas sh ops/werc-oci-install
 ```
 
-O instalador cria ou reutiliza `werc`, aloca subUIDs/subGIDs livres,
-instala as dependências e os scripts, habilita OpenRC e adiciona um único
-job ao cron. Pode ser executado novamente. Preserva o Caddyfile existente
-e guarda os scripts anteriores em `/etc/werc-oci/install-backup.*`.
+The installer creates the service user, allocates subordinate IDs, installs
+packages and a verified Cloudflare client, installs services, and schedules
+one cron job. Running it again preserves the active slot and Caddy settings.
+A single `previous-install` directory holds the previous scripts.
+Promotion keeps one `Caddyfile.previous` for recovery; backups do not grow
+with every installation or deployment.
 
-Configure o Cloudflare Tunnel uma vez: salve o token em
-`/etc/cloudflared/token` com proprietário root e permissão `0600`.
-A rota de `arthurgusmao.com.br` deve apontar para `http://127.0.0.1:8080`.
-O token fica somente no servidor; nunca coloque no Git.
-
-Em um servidor novo, use `ops/Caddyfile` com a porta inicial `8081`
-(o instalador faz isso quando o arquivo não existe). É apenas o estado
-inicial; não precisa executar lighttpd no host. Depois:
+Save your Cloudflare Tunnel token as `/etc/cloudflared/token`, owned by root
+with mode `0600`. Configure the public hostname `arthurgusmao.com.br` to
+forward to `http://127.0.0.1:8080`. Keep the token outside Git.
 
 ```sh
 doas rc-service caddy start
+doas rc-service cloudflared start
 doas werc-oci-deploy
 doas rc-service werc-oci start
-doas rc-service cloudflared start
 ```
 
-O primeiro deploy precisa que o túnel esteja conectado para verificar
-o domínio público. Se ainda não estiver, inicie cloudflared antes do deploy.
-Após o primeiro deploy, o OpenRC restaura os containers no boot sem rede,
-antes do Caddy. O cron procura novas imagens quando a conexão volta.
+A new installation starts with `active-slot=none` until its first successful
+deployment. No web server runs on the host except Caddy. The first deployment
+requires a working tunnel because promotion verifies the public domain.
+The GHCR package must be public; no server-side GitHub credentials are needed.
 
-## Uso diário
+## Daily use
 
-Abra uma PR e espere o check `CI / image`. Ao fazer merge em `master`,
-a imagem é publicada e o notebook a encontra em até um minuto após o CI.
-Se o build falhar ou a imagem não estiver disponível, mantém a versão atual.
-Uma atualização usa o slot inativo (`blue:18085`, `green:18086`), testa
-páginas, CSS, fonte, SHA e proteção dos arquivos privados, e só então troca
-o Caddy. Falhas na promoção restauram a configuração anterior.
+Open a PR and wait for `CI / image`. Merge it into `master` to publish the
+image. The server checks once per minute and deploys when the image is
+available. Downloading and validating an image takes additional time.
+Failed builds or unavailable images leave production unchanged.
+
+Deployment replaces the inactive slot, tests pages, CSS, the font, the
+revision, and private-path protection, then reloads Caddy. The other slot
+remains available for rollback. OpenRC restores containers at boot using
+local images; cron recovers a stopped active container and checks for updates.
 
 ```sh
 doas rc-service werc-oci verify
@@ -64,32 +63,35 @@ doas tail -50 /var/log/messages
 doas tail -50 /var/log/werc-oci.log
 ```
 
-Use `werc-podman` para os containers de produção. Os caminhos são fixos:
-armazenamento `/var/lib/werc/.local/share/werc-oci/storage` e runtime
-`/run/werc-oci`. O Podman pessoal de `aw` continua independente.
+Use `werc-podman` for production. Storage lives at
+`/var/lib/werc/.local/share/werc-oci/storage`; temporary runtime lives at
+`/run/werc-oci`. Personal Podman storage is separate.
 
-## Rollback e manutenção
+## Rollback
 
 ```sh
 doas touch /etc/werc-oci/paused
 doas cat /etc/werc-oci/active-slot
-# Se green está ativo, blue é a versão anterior:
+# When green is active, blue is the previous release:
 doas werc-oci-promote blue
 ```
 
-O arquivo `paused` suspende o deploy automático para que o próximo minuto
-não desfaça o rollback. Para voltar: `doas rm /etc/werc-oci/paused`.
-Para recuperar containers parados: `doas rc-service werc-oci restore`.
+Pause automatic deployment before rollback. Remove `/etc/werc-oci/paused`
+to resume it. Run `doas rc-service werc-oci restore` to recover stopped
+containers. Both slots must remain intact to retain rollback.
 
-Os dois slots são preservados para rollback. Imagens antigas podem ser
-removidas explicitamente com `doas su-exec werc env HOME=/var/lib/werc
-werc-podman image prune -a`; imagens usadas pelos slots não são removidas.
-Não use `system reset` para manutenção.
+Unused images can be removed explicitly:
 
-O notebook precisa estar ligado, acordado e conectado para atender o site.
-Reinstalar os scripts exige executar o instalador; o CD atualiza apenas
-a imagem do site. A rota antiga `deploy.arthurgusmao.com.br` não é utilizada.
+```sh
+doas su-exec werc env HOME=/var/lib/werc werc-podman image prune -a
+```
 
-Referências: [Podman rootless](https://docs.podman.io/en/stable/markdown/podman.1.html),
-[Caddy reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
-e [Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/get-started/).
+Images used by either slot are retained. Do not use `system reset` for
+routine maintenance. Install changes to host scripts by rerunning the
+installer; CD updates the website image only.
+
+The notebook must stay powered on, awake, and connected to serve the site.
+
+References: [Podman rootless](https://docs.podman.io/en/stable/markdown/podman.1.html),
+[Caddy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy), and
+[Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/get-started/).

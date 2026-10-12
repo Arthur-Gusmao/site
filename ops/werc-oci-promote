@@ -8,12 +8,11 @@ umask 077
 }
 
 [ "$#" -eq 1 ] || {
-    echo "Usage: $0 blue|green|legacy" >&2
+    echo "Usage: $0 blue|green" >&2
     exit 2
 }
 
 case "$1" in
-    legacy) target=legacy; port=8081 ;;
     blue) target=blue; port=18085 ;;
     green) target=green; port=18086 ;;
     *) echo "Invalid slot" >&2; exit 2 ;;
@@ -34,7 +33,7 @@ fi
 old=$(cat "$slotfile")
 
 case "$old" in
-    legacy) oldport=8081 ;;
+    none) oldport=18085 ;;
     blue) oldport=18085 ;;
     green) oldport=18086 ;;
     *)
@@ -140,15 +139,12 @@ private_status=$(curl -sS --max-time 5 \
     -o /dev/null -w '%{http_code}' \
     "$origin/_werc/config")
 
-case "$private_status:$target" in
-    403:*|404:legacy) : ;;
-    *)
-        echo "Private configuration is not protected (HTTP $private_status)" >&2
-        exit 1
-        ;;
-esac
+[ "$private_status" = 403 ] || {
+    echo "Private configuration is not protected (HTTP $private_status)" >&2
+    exit 1
+}
 
-backup=$(mktemp /etc/werc-oci/Caddyfile.backup.XXXXXX)
+backup=/etc/werc-oci/Caddyfile.previous
 candidate=$(mktemp /etc/caddy/Caddyfile.candidate.XXXXXX)
 
 cp -p "$conf" "$backup"
@@ -214,4 +210,3 @@ curl -fsSL \
     -o /dev/null
 
 echo "PROMOTION PASSED: $target ($expected)"
-echo "Backup: $backup"

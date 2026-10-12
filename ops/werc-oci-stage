@@ -44,7 +44,7 @@ check_control() {
     case "$active" in
         blue) active_port=18085 ;;
         green) active_port=18086 ;;
-        legacy) active_port=8081 ;;
+        none) active_port=18085 ;;
         *) echo "Invalid active slot: $active" >&2; return 1 ;;
     esac
     [ "$active" != "$slot" ] || {

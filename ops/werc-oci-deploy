@@ -21,7 +21,7 @@ active=$(cat /etc/werc-oci/active-slot)
 case "$active" in
     blue) name=werc-blue; next=green ;;
     green) name=werc-green; next=blue ;;
-    legacy) name=; next=green ;;
+    none) name=; next=green ;;
     *) echo 'Invalid active slot' >&2; exit 1 ;;
 esac
 

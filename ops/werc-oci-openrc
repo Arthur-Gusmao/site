@@ -30,7 +30,7 @@ active_container() {
     case "$(cat "$slotfile")" in
         blue) printf '%s\n' werc-blue ;;
         green) printf '%s\n' werc-green ;;
-        legacy) return 2 ;;
+        none) return 2 ;;
         *) return 1 ;;
     esac
 }
@@ -118,7 +118,7 @@ start() {
         result=$?
 
         if [ "$result" -eq 2 ]; then
-            einfo "Legacy werc is selected"
+            einfo "Waiting for the first deployment"
             return 0
         fi
 
@@ -158,8 +158,8 @@ verify() {
         result=$?
 
         if [ "$result" -eq 2 ]; then
-            einfo "Legacy is selected; OCI verification skipped"
-            return 0
+            eerror "No image deployed yet; verification unavailable"
+            return 1
         fi
 
         eerror "Invalid active slot"
