@@ -36,7 +36,7 @@ jobs:
 
           test -n "$DEPLOY_SECRET"
 
-          printf '{"ref":"refs/heads/main","repository":{"full_name":"%s"},"after":"%s"}' \
+          printf '{"ref":"refs/heads/master","repository":{"full_name":"%s"},"after":"%s"}' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" > payload.json
 
           SIGNATURE=$(openssl dgst -sha256 \
