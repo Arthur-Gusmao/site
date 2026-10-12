@@ -1,0 +1,86 @@
+#!/sbin/openrc-run
+
+description="Restore active rootless werc container"
+
+slotfile=/etc/werc-oci/active-slot
+
+depend() {
+    need localmount cgroups
+    use net
+    before caddy
+}
+
+podman_aw() {
+    /usr/bin/doas -u aw /usr/bin/env \
+        HOME=/home/aw \
+        USER=aw \
+        LOGNAME=aw \
+        XDG_RUNTIME_DIR=/run/user/1000 \
+        /usr/bin/podman "$@"
+}
+
+active_container() {
+    [ -f "$slotfile" ] || return 1
+
+    slot=$(cat "$slotfile")
+
+    case "$slot" in
+        blue)  printf '%s\n' werc-blue ;;
+        green) printf '%s\n' werc-green ;;
+        legacy) return 2 ;;
+        *) return 1 ;;
+    esac
+}
+
+start_pre() {
+    checkpath -d -m 0700 -o aw:aw /run/user/1000
+}
+
+start() {
+    if name=$(active_container); then
+        :
+    else
+        result=$?
+        if [ "$result" -eq 2 ]; then
+            ebegin "Legacy werc remains active"
+            eend 0
+            return 0
+        fi
+
+        eerror "Invalid or missing active slot"
+        return 1
+    fi
+
+    ebegin "Starting $name"
+
+    if [ "$(podman_aw inspect -f '{{.State.Running}}' "$name")" = true ]; then
+        eend 0
+        return 0
+    fi
+
+    podman_aw start "$name" >/dev/null
+    eend $?
+}
+
+stop() {
+    if ! name=$(active_container); then
+        return 0
+    fi
+
+    ebegin "Stopping $name"
+    podman_aw stop "$name" >/dev/null
+    eend $?
+}
+
+status() {
+    if name=$(active_container); then
+        if [ "$(podman_aw inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" = true ]; then
+            einfo "$name is running"
+            return 0
+        fi
+        eerror "$name is not running"
+        return 1
+    fi
+
+    [ -f "$slotfile" ] && [ "$(cat "$slotfile")" = legacy ]
+}
