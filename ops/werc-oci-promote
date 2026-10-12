@@ -44,6 +44,13 @@ case "$old" in
         ;;
 esac
 
+# Do not switch slots while the rootless staging process replaces one.
+if [ -d /run/werc-oci/werc-oci-stage.lock ]; then
+    echo "OCI staging is in progress; promotion refused" >&2
+    rmdir "$lock"
+    exit 1
+fi
+
 backup=
 candidate=
 armed=0

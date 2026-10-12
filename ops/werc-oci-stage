@@ -1,115 +1,188 @@
 #!/bin/sh
 set -eu
+umask 077
 
 if [ "$#" -ne 2 ]; then
-    echo "usage: $0 blue|green <commit-sha>" >&2
+    echo "Usage: $0 blue|green <commit-sha>" >&2
     exit 2
 fi
 
 case "$1" in
-    blue)
-        name=werc-blue
-        port=18085
-        ;;
-    green)
-        name=werc-green
-        port=18086
-        ;;
-    *)
-        echo "Invalid slot: $1" >&2
-        exit 2
-        ;;
+    blue) slot=blue; name=werc-blue; port=18085 ;;
+    green) slot=green; name=werc-green; port=18086 ;;
+    *) echo "Invalid slot: $1" >&2; exit 2 ;;
 esac
 
 sha=$2
-
 case "$sha" in
-    ''|*[!0123456789abcdef]*)
-        echo "Invalid commit SHA" >&2
-        exit 2
-        ;;
+    ''|*[!0123456789abcdef]*) echo "Invalid SHA" >&2; exit 2 ;;
 esac
+[ "${#sha}" -eq 40 ] || { echo "Expected full 40-character SHA" >&2; exit 2; }
+[ "$(id -un)" = aw ] || { echo "Run as aw (rootless Podman)" >&2; exit 1; }
 
-if [ "${#sha}" -ne 40 ]; then
-    echo "Expected a full 40-character SHA" >&2
-    exit 2
-fi
-
-if podman container exists "$name"; then
-    echo "Container $name already exists; refusing replacement" >&2
+# Service-owned runtime: graphical logins mount a different /run/user/1000.
+runtime_dir=/run/werc-oci
+[ -d "$runtime_dir" ] || {
+    echo "Missing service runtime $runtime_dir; check werc-oci" >&2
     exit 1
-fi
+}
+XDG_RUNTIME_DIR=$runtime_dir
+export XDG_RUNTIME_DIR
 
+slotfile=/etc/werc-oci/active-slot
+conf=/etc/caddy/Caddyfile
+promotelock=/etc/werc-oci/promote.lock
+lock=$runtime_dir/werc-oci-stage.lock
+backup="$name.previous"
 image="ghcr.io/arthur-gusmao/site:$sha"
 base="http://127.0.0.1:$port"
-page=$(mktemp)
-started=0
 
-cleanup() {
-    status=$?
-    rm -f "$page"
+check_control() {
+    active=$(cat "$slotfile") || return 1
+    case "$active" in
+        blue) active_port=18085 ;;
+        green) active_port=18086 ;;
+        legacy) active_port=8081 ;;
+        *) echo "Invalid active slot: $active" >&2; return 1 ;;
+    esac
+    [ "$active" != "$slot" ] || {
+        echo "Refusing to replace active slot: $slot" >&2
+        return 1
+    }
 
-    if [ "$status" -ne 0 ] && [ "$started" -eq 1 ]; then
-        echo "Stage failed; removing $name" >&2
-        podman logs --tail 50 "$name" >&2 || :
-        podman rm -f "$name" >/dev/null || :
-    fi
+    current=$(/bin/sed -n \
+        's/^[[:space:]]*reverse_proxy[[:space:]]*127[.]0[.]0[.]1:\([0-9][0-9]*\)[[:space:]]*$/\1/p' \
+        "$conf") || return 1
+    [ "$current" = "$active_port" ] || {
+        echo "Caddy and active-slot disagree" >&2
+        return 1
+    }
+    [ ! -d "$promotelock" ] || {
+        echo "A promotion is in progress" >&2
+        return 1
+    }
 }
 
-trap cleanup 0
+check_control || exit 1
 
 echo "Pulling $image"
 podman pull "$image"
 
-echo "Starting $name on $base"
+revision=$(podman image inspect \
+    -f '{{ index .Labels "org.opencontainers.image.revision" }}' \
+    "$image")
+[ "$revision" = "$sha" ] || {
+    echo "Image revision label does not match requested SHA" >&2
+    exit 1
+}
 
+page=$(mktemp)
+if ! mkdir "$lock" 2>/dev/null; then
+    rm -f "$page"
+    echo "Another stage is in progress (or stale lock: $lock)" >&2
+    exit 1
+fi
+
+had_old=0
+old_running=false
+moved=0
+candidate_started=0
+committed=0
+
+cleanup() {
+    code=$?
+    trap - 0 1 2 15
+    rm -f "$page"
+
+    if [ "$committed" -ne 1 ]; then
+        if [ "$moved" -eq 1 ]; then
+            echo "ROLLBACK: restoring $name" >&2
+            if podman container exists "$name"; then
+                podman logs --tail 30 "$name" >&2 || :
+                podman rm -f "$name" >&2 || echo "URGENT: cannot remove failed candidate" >&2
+            fi
+            if podman container exists "$backup"; then
+                if podman rename "$backup" "$name"; then
+                    if [ "$old_running" = true ]; then
+                        podman start "$name" >/dev/null || echo "URGENT: cannot restart old $name" >&2
+                    fi
+                else
+                    echo "URGENT: cannot rename $backup back to $name" >&2
+                fi
+            else
+                echo "URGENT: previous container missing ($backup)" >&2
+            fi
+        elif [ "$candidate_started" -eq 1 ] && [ "$had_old" -eq 0 ] && podman container exists "$name"; then
+            podman rm -f "$name" >/dev/null || :
+        elif [ "$had_old" -eq 1 ] && [ "$old_running" = true ]; then
+            # The stop or rename may have failed; restore the original state.
+            running=$(podman inspect -f '{{.State.Running}}' "$name" 2>/dev/null || :)
+            [ "$running" = true ] || podman start "$name" >/dev/null || :
+        fi
+    fi
+
+    rmdir "$lock" 2>/dev/null || echo "WARNING: stage lock remains at $lock" >&2
+    exit "$code"
+}
+
+trap cleanup 0
+trap 'exit 129' 1
+trap 'exit 130' 2
+trap 'exit 143' 15
+
+check_control
+if podman container exists "$backup"; then
+    echo "Previous attempt needs recovery: $backup" >&2
+    exit 1
+fi
+
+if podman container exists "$name"; then
+    had_old=1
+    old_running=$(podman inspect -f '{{.State.Running}}' "$name")
+
+    if [ "$old_running" = true ]; then
+        podman stop "$name" >/dev/null
+    fi
+    podman rename "$name" "$backup"
+    moved=1
+fi
+
+echo "Starting $name on $base"
+candidate_started=1
+# If run fails after creating the container, the exit trap removes it.
 podman run -d \
     --name "$name" \
     --userns=keep-id \
     --publish "127.0.0.1:$port:8080" \
-    --label "org.opencontainers.image.revision=$sha" \
     "$image"
-
-started=1
 
 ready=0
 i=0
-
 while [ "$i" -lt 15 ]; do
     if curl -fsS --max-time 3 \
         -H 'Host: arthurgusmao.com.br' \
         -o "$page" "$base/" 2>/dev/null &&
-        grep -Fq '<h1>Arthur Gusmão</h1>' "$page"
-    then
+        grep -Fq '<h1>Arthur Gusmão</h1>' "$page"; then
         ready=1
         break
     fi
-
     i=$((i + 1))
     sleep 1
 done
-
-if [ "$ready" -ne 1 ]; then
-    echo "Homepage health check failed" >&2
-    exit 1
-fi
+[ "$ready" -eq 1 ] || { echo "Homepage health check failed" >&2; exit 1; }
 
 check() {
     path=$1
     expected=$2
-
     actual=$(curl -sS --max-time 5 \
         -H 'Host: arthurgusmao.com.br' \
-        -o /dev/null \
-        -w '%{http_code}' \
+        -o /dev/null -w '%{http_code}' \
         "$base$path")
-
     printf '%-34s %s\n' "$path" "$actual"
-
-    if [ "$actual" != "$expected" ]; then
-        echo "Expected HTTP $expected" >&2
+    [ "$actual" = "$expected" ] || {
+        echo "Expected HTTP $expected for $path" >&2
         return 1
-    fi
+    }
 }
 
 check / 200
@@ -120,13 +193,17 @@ check /pub/style/style.css 200
 check /pub/fonts/oxanium.woff2 200
 check /_werc/config 403
 
-revision=$(curl -fsS --max-time 5 \
+actual=$(curl -fsS --max-time 5 \
     -H 'Host: arthurgusmao.com.br' \
     "$base/pub/meta/revision.txt")
+[ "$actual" = "$sha" ] || { echo "Revision mismatch" >&2; exit 1; }
 
-if [ "$revision" != "$sha" ]; then
-    echo "Revision mismatch: expected $sha, got $revision" >&2
-    exit 1
+running=$(podman inspect -f '{{.State.Running}}' "$name")
+[ "$running" = true ] || { echo "Candidate exited" >&2; exit 1; }
+check_control
+
+committed=1
+if [ "$moved" -eq 1 ] && ! podman rm "$backup" >/dev/null; then
+    echo "WARNING: failed to remove old standby $backup" >&2
 fi
-
 echo "STAGE PASSED: $name ($sha)"
