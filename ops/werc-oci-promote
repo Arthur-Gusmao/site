@@ -44,8 +44,8 @@ case "$old" in
         ;;
 esac
 
-backup=$(mktemp /etc/werc-oci/Caddyfile.backup.XXXXXX)
-candidate=$(mktemp /etc/caddy/Caddyfile.candidate.XXXXXX)
+backup=
+candidate=
 armed=0
 
 set_slot() {
@@ -140,6 +140,9 @@ case "$private_status:$target" in
         exit 1
         ;;
 esac
+
+backup=$(mktemp /etc/werc-oci/Caddyfile.backup.XXXXXX)
+candidate=$(mktemp /etc/caddy/Caddyfile.candidate.XXXXXX)
 
 cp -p "$conf" "$backup"
 
