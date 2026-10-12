@@ -1,0 +1,19 @@
+# Secrets
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*secret*
+*token*
+
+# Temporary files
+*.swp
+*.swo
+*~
+*.bak
+.DS_Store
+
+# Local data
+*.sqlite
+*.db
