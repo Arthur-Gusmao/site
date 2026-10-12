@@ -1,6 +1,9 @@
 #!/sbin/openrc-run
 
-description="Restore active rootless werc container"
+description="Restore and verify rootless werc OCI slots"
+extra_commands="verify restore"
+description_verify="Verify active OCI revision over HTTP"
+description_restore="Restore OCI containers without stopping production"
 
 slotfile=/etc/werc-oci/active-slot
 
@@ -11,7 +14,7 @@ depend() {
 }
 
 podman_aw() {
-    /usr/bin/doas -u aw /usr/bin/env \
+    /sbin/su-exec aw /usr/bin/env \
         HOME=/home/aw \
         USER=aw \
         LOGNAME=aw \
@@ -22,14 +25,69 @@ podman_aw() {
 active_container() {
     [ -f "$slotfile" ] || return 1
 
-    slot=$(cat "$slotfile")
-
-    case "$slot" in
-        blue)  printf '%s\n' werc-blue ;;
+    case "$(cat "$slotfile")" in
+        blue) printf '%s\n' werc-blue ;;
         green) printf '%s\n' werc-green ;;
         legacy) return 2 ;;
         *) return 1 ;;
     esac
+}
+
+slot_port() {
+    case "$1" in
+        werc-blue) printf '%s\n' 18085 ;;
+        werc-green) printf '%s\n' 18086 ;;
+        *) return 1 ;;
+    esac
+}
+
+verify_container() {
+    name=$1
+    port=$(slot_port "$name") || return 1
+
+    running=$(podman_aw inspect \
+        -f '{{.State.Running}}' "$name" 2>/dev/null) || return 1
+
+    [ "$running" = true ] || return 1
+
+    expected=$(podman_aw inspect \
+        -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+        "$name" 2>/dev/null) || return 1
+
+    case "$expected" in
+        ''|*[!0123456789abcdef]*) return 1 ;;
+    esac
+
+    [ "${#expected}" -eq 40 ] || return 1
+
+    actual=$(/usr/bin/curl -fsS --max-time 3 \
+        -H 'Host: arthurgusmao.com.br' \
+        "http://127.0.0.1:$port/pub/meta/revision.txt" \
+        2>/dev/null) || return 1
+
+    [ "$actual" = "$expected" ]
+}
+
+ensure_ready() {
+    name=$1
+
+    running=$(podman_aw inspect \
+        -f '{{.State.Running}}' "$name" 2>/dev/null) || return 1
+
+    if [ "$running" != true ]; then
+        podman_aw start "$name" >/dev/null || return 1
+    fi
+
+    i=0
+    while [ "$i" -lt 20 ]; do
+        if verify_container "$name"; then
+            return 0
+        fi
+        i=$((i + 1))
+        sleep 1
+    done
+
+    return 1
 }
 
 start_pre() {
@@ -41,46 +99,86 @@ start() {
         :
     else
         result=$?
+
         if [ "$result" -eq 2 ]; then
-            ebegin "Legacy werc remains active"
-            eend 0
+            einfo "Legacy werc is selected"
             return 0
         fi
 
-        eerror "Invalid or missing active slot"
+        eerror "Invalid active slot"
         return 1
     fi
 
-    ebegin "Starting $name"
+    ebegin "Restoring active container $name"
 
-    if [ "$(podman_aw inspect -f '{{.State.Running}}' "$name")" = true ]; then
-        eend 0
-        return 0
+    if ! ensure_ready "$name"; then
+        eend 1 "Active container failed readiness verification"
+        return 1
     fi
 
-    podman_aw start "$name" >/dev/null
-    eend $?
+    eend 0
+
+    case "$name" in
+        werc-blue) standby=werc-green ;;
+        werc-green) standby=werc-blue ;;
+    esac
+
+    if podman_aw container exists "$standby"; then
+        if ensure_ready "$standby"; then
+            einfo "Standby container $standby is ready"
+        else
+            ewarn "Standby $standby is unavailable"
+        fi
+    fi
+
+    return 0
 }
 
-stop() {
-    if ! name=$(active_container); then
+verify() {
+    if name=$(active_container); then
+        :
+    else
+        result=$?
+
+        if [ "$result" -eq 2 ]; then
+            einfo "Legacy is selected; OCI verification skipped"
+            return 0
+        fi
+
+        eerror "Invalid active slot"
+        return 1
+    fi
+
+    if verify_container "$name"; then
+        einfo "$name: revision verified"
         return 0
     fi
 
-    ebegin "Stopping $name"
-    podman_aw stop "$name" >/dev/null
-    eend $?
+    eerror "$name: revision verification failed"
+    return 1
 }
 
 status() {
-    if name=$(active_container); then
-        if [ "$(podman_aw inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" = true ]; then
-            einfo "$name is running"
-            return 0
-        fi
-        eerror "$name is not running"
-        return 1
-    fi
+    verify
+}
 
-    [ -f "$slotfile" ] && [ "$(cat "$slotfile")" = legacy ]
+stop() {
+    ebegin "Stopping werc OCI containers"
+
+    result=0
+
+    for name in werc-blue werc-green; do
+        running=$(podman_aw inspect \
+            -f '{{.State.Running}}' "$name" 2>/dev/null) || continue
+
+        if [ "$running" = true ]; then
+            podman_aw stop "$name" >/dev/null || result=1
+        fi
+    done
+
+    eend "$result"
+}
+
+restore() {
+    start
 }
