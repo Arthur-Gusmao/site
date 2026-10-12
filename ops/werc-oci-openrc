@@ -105,6 +105,8 @@ ensure_ready() {
     return 1
 }
 start_pre() {
+    # /run is ephemeral; the parent may not exist until a user logs in.
+    checkpath -d -m 0755 -o root:root /run/user || return 1
     checkpath -d -m 0700 -o aw:aw /run/user/1000
 }
 
