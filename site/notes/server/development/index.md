@@ -29,6 +29,8 @@ It runs lighttpd in the foreground as container UID/GID
 `/pub/style/arthur.css`. `top_bar.inc` defines navigation, and `footer.inc`
 defines the footer. Oxanium is loaded from `/pub/fonts/oxanium.woff2`.
 The stylesheet supports narrow screens and light/dark color preferences.
+Its URL includes a version query; change that value when changing CSS so
+previously cached assets do not hide the update.
 
 lighttpd aliases `/pub/` to the shared assets directory. Requests for virtual
 pages go through werc; real static files can be served directly. Direct access
