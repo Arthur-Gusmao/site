@@ -26,6 +26,7 @@ jobs:
         run: |
           set -eu
           docker build \
+            --build-arg "REVISION=$GITHUB_SHA" \
             --file container/Containerfile \
             --tag "$IMAGE" \
             .
@@ -69,6 +70,12 @@ jobs:
             -H 'Host: arthurgusmao.com.br' \
             -o /dev/null \
             http://127.0.0.1:18083/pub/style/style.css
+
+          REVISION=$(curl -fsS \
+            -H 'Host: arthurgusmao.com.br' \
+            http://127.0.0.1:18083/pub/meta/revision.txt)
+
+          test "$REVISION" = "$GITHUB_SHA"
 
           STATUS=$(curl -sS \
             -H 'Host: arthurgusmao.com.br' \

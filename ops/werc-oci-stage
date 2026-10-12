@@ -1,0 +1,132 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 2 ]; then
+    echo "usage: $0 blue|green <commit-sha>" >&2
+    exit 2
+fi
+
+case "$1" in
+    blue)
+        name=werc-blue
+        port=18085
+        ;;
+    green)
+        name=werc-green
+        port=18086
+        ;;
+    *)
+        echo "Invalid slot: $1" >&2
+        exit 2
+        ;;
+esac
+
+sha=$2
+
+case "$sha" in
+    ''|*[!0123456789abcdef]*)
+        echo "Invalid commit SHA" >&2
+        exit 2
+        ;;
+esac
+
+if [ "${#sha}" -ne 40 ]; then
+    echo "Expected a full 40-character SHA" >&2
+    exit 2
+fi
+
+if podman container exists "$name"; then
+    echo "Container $name already exists; refusing replacement" >&2
+    exit 1
+fi
+
+image="ghcr.io/arthur-gusmao/site:$sha"
+base="http://127.0.0.1:$port"
+page=$(mktemp)
+started=0
+
+cleanup() {
+    status=$?
+    rm -f "$page"
+
+    if [ "$status" -ne 0 ] && [ "$started" -eq 1 ]; then
+        echo "Stage failed; removing $name" >&2
+        podman logs --tail 50 "$name" >&2 || :
+        podman rm -f "$name" >/dev/null || :
+    fi
+}
+
+trap cleanup 0
+
+echo "Pulling $image"
+podman pull "$image"
+
+echo "Starting $name on $base"
+
+podman run -d \
+    --name "$name" \
+    --userns=keep-id \
+    --publish "127.0.0.1:$port:8080" \
+    --label "org.opencontainers.image.revision=$sha" \
+    "$image"
+
+started=1
+
+ready=0
+i=0
+
+while [ "$i" -lt 15 ]; do
+    if curl -fsS --max-time 3 \
+        -H 'Host: arthurgusmao.com.br' \
+        -o "$page" "$base/" 2>/dev/null &&
+        grep -Fq '<h1>Arthur Gusmão</h1>' "$page"
+    then
+        ready=1
+        break
+    fi
+
+    i=$((i + 1))
+    sleep 1
+done
+
+if [ "$ready" -ne 1 ]; then
+    echo "Homepage health check failed" >&2
+    exit 1
+fi
+
+check() {
+    path=$1
+    expected=$2
+
+    actual=$(curl -sS --max-time 5 \
+        -H 'Host: arthurgusmao.com.br' \
+        -o /dev/null \
+        -w '%{http_code}' \
+        "$base$path")
+
+    printf '%-34s %s\n' "$path" "$actual"
+
+    if [ "$actual" != "$expected" ]; then
+        echo "Expected HTTP $expected" >&2
+        return 1
+    fi
+}
+
+check / 200
+check /about/ 200
+check /projects/ 200
+check /notes/ 200
+check /pub/style/style.css 200
+check /pub/fonts/oxanium.woff2 200
+check /_werc/config 403
+
+revision=$(curl -fsS --max-time 5 \
+    -H 'Host: arthurgusmao.com.br' \
+    "$base/pub/meta/revision.txt")
+
+if [ "$revision" != "$sha" ]; then
+    echo "Revision mismatch: expected $sha, got $revision" >&2
+    exit 1
+fi
+
+echo "STAGE PASSED: $name ($sha)"
