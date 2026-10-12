@@ -35,6 +35,15 @@ See [Cloudflare's routing documentation](https://developers.cloudflare.com/tunne
 - `127.0.0.1:18083`: temporary HTTP test port on the CI runner.
 - Caddy's default admin endpoint is local port `2019`; reload uses it.
 
+The initial proxy template is deliberately small:
+
+    :8080 {
+        bind 127.0.0.1
+        reverse_proxy 127.0.0.1:18085
+    }
+
+Promotion changes the upstream port to match the selected slot.
+
 Blue and green are deployment slots, not two simultaneous production replicas.
 Only one receives normal traffic. Both may run so the older release can be
 promoted quickly. There is no automatic traffic failover to the standby slot.

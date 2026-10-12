@@ -74,7 +74,9 @@ any private host configuration separately, with private permissions and an
 off-machine copy when disaster recovery matters.
 
 The installer keeps one previous script set. Promotion keeps one previous
-Caddyfile. A one-time private archive was made before the legacy cleanup;
+Caddyfile. The one-time private archive is
+`/var/backups/site-before-legacy-cleanup.tar.gz`, owned by root with mode `0600`.
+It was made before the legacy cleanup;
 it is not an ongoing backup system, is not served by the website, and must not
 be uploaded as public content.
 

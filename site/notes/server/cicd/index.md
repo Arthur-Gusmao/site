@@ -32,6 +32,11 @@ checks source content, confirms the private site config is absent, and validates
 lighttpd's configuration. Its HTTP test checks the homepage heading, page routes,
 CSS, font, revision marker, and HTTP `403` for `/_werc/config`.
 
+The staging HTTP checks expect `200` for `/`, `/about/`, `/projects/`,
+`/notes/`, `/pub/style/style.css`, and `/pub/fonts/oxanium.woff2`.
+`/_werc/config` must return `403`. The revision marker must exactly match
+the requested full SHA. These are explicit checks rather than a general crawler.
+
 PRs build and test without publishing or deploying. A passing run on `master`
 logs into GHCR with the job's `GITHUB_TOKEN` and pushes the SHA-tagged image.
 No custom deployment secret or notebook SSH credential is required.
