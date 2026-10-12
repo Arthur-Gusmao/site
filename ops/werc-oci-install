@@ -71,6 +71,8 @@ touch /etc/crontabs/root
 if ! grep -Fq '/usr/local/sbin/werc-oci-deploy' /etc/crontabs/root; then
     printf '\n%s\n' "$cron" >> /etc/crontabs/root
 fi
+# BusyBox crond detects directory changes; editing a file alone can wait an hour.
+touch /etc/crontabs
 rc-update add cgroups default
 rc-update add werc-oci default
 rc-update add caddy default
