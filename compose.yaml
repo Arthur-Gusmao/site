@@ -1,0 +1,17 @@
+services:
+  site:
+    build:
+      context: .
+      dockerfile: container/Containerfile
+    ports:
+      - "127.0.0.1:${PORT:-8080}:8080"
+    restart: unless-stopped
+
+  tunnel:
+    image: docker.io/cloudflare/cloudflared:2026.10.0
+    profiles: [tunnel]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: "${TUNNEL_TOKEN:-}"
+    depends_on: [site]
+    restart: unless-stopped

@@ -6,5 +6,4 @@ Technical notes, experiments, and things I have learned.
 ## Portable site server
 
 [Complete server documentation](/notes/server/): architecture, installation,
-CI/CD, rootless Podman, operations, development, rollback, troubleshooting,
-and the cleanup decisions behind this website.
+Podman Compose, manual updates and an optional public tunnel.

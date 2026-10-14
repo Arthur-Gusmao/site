@@ -2,8 +2,7 @@ name: CI
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -15,84 +14,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  image:
+  site:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
-    permissions:
-      contents: read
-      packages: write
-
     env:
-      IMAGE: ghcr.io/arthur-gusmao/site:${{ github.sha }}
+      PODMAN_COMPOSE_PROVIDER: /tmp/site-compose/bin/podman-compose
+      PORT: "18083"
 
     steps:
-      - name: Checkout with submodules
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: true
           persist-credentials: false
 
-      - name: Verify rootless Podman
+      - name: Prepare Podman Compose
         run: |
-          set -eu
-          if ! command -v podman >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y podman
-          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y podman nftables python3-venv
+          python3 -m venv /tmp/site-compose
+          /tmp/site-compose/bin/pip install podman-compose==1.6.0
           test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
 
-      - name: Validate operations scripts
+      - name: Validate configuration
+        run: |
+          sh -n check
+          podman compose --profile tunnel config --services
+
+      - name: Build and check site
         run: |
           set -eu
-          for script in run ops/werc ops/werc-* ops/cloudflared-openrc; do
-            sh -n "$script"
-          done
-
-      - name: Build OCI image
-        run: |
-          set -eu
-          podman build \
-            --build-arg "REVISION=$GITHUB_SHA" \
-            --file container/Containerfile \
-            --tag "$IMAGE" \
-            .
-
-      - name: Validate image
-        run: |
-          set -eu
-          podman run --rm \
-            --entrypoint /bin/sh \
-            "$IMAGE" -ec '
-              test -x /srv/werc/bin/werc.rc
-              test -x /usr/lib/plan9/bin/rc
-              test -s /srv/werc/sites/arthurgusmao.com.br/index.md
-              test ! -e /srv/werc/sites/arthurgusmao.com.br/_werc/config
-              /usr/sbin/lighttpd -tt -f /etc/lighttpd/lighttpd.conf
-            '
-
-      - name: HTTP smoke test
-        run: |
-          set -eu
-
-          CID=$(podman run -d \
-            -p 127.0.0.1:18083:8080 \
-            "$IMAGE")
-
-          trap 'podman logs "$CID" || true; podman rm -f "$CID" >/dev/null 2>&1 || true' EXIT
-
-          sh ops/werc check http://127.0.0.1:18083 "$GITHUB_SHA"
-
-      - name: Publish to GHCR
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eu
-
-          printf '%s' "$GHCR_TOKEN" |
-            podman login ghcr.io \
-              -u "$GITHUB_ACTOR" \
-              --password-stdin
-
-          podman push "$IMAGE"
+          trap 'podman compose logs; podman compose down' EXIT
+          podman compose up -d --build
+          ./check http://127.0.0.1:18083

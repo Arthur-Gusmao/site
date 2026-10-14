@@ -1,49 +1,66 @@
 # arthurgusmao.com.br
 
-Source code for my personal website.
+Markdown + werc + lighttpd in one container. Oxanium, no database or JavaScript.
 
-Live website: https://arthurgusmao.com.br
+## Run
 
-## Run on another machine
+Install Git, Podman and a [Compose provider](https://docs.podman.io/en/stable/markdown/podman-compose.1.html) (`podman-compose`). On Alpine:
 
-Requirements: Git and Docker or Podman, running Linux containers.
+```sh
+doas apk add git podman podman-compose nftables
+```
+
+Then:
 
 ```sh
 git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
 cd site
-./run
+podman compose up -d --build
 ```
 
-Open http://localhost:8080. Stop with Ctrl+C.
-If the port is busy, use `./run 8081`. The script builds from this checkout,
-including local edits. No tunnel token or Alpine host is needed to run locally.
+Open http://localhost:8080.
 
-## Edit the site
+## Use
 
-| Change | File |
-| --- | --- |
-| Home | `site/index.md` |
-| Pages | `site/<page>/index.md` |
-| Appearance | `pub/style/style.css` |
-| Navigation | `site/_werc/lib/top_bar.inc` |
-| Footer | `site/_werc/lib/footer.inc` |
+```sh
+podman compose logs -f
+podman compose down
+```
 
-To add `/example/`, create `site/example/index.md` and write Markdown.
-Use indented code blocks; the formatter does not support fenced code blocks.
+Update manually:
 
-After editing, stop the site and run `./run` again.
-To reproduce a particular version, check out that commit before running.
-The source revision is pinned by Git; package downloads are not a promise
-of byte-identical images.
+```sh
+git pull --ff-only --recurse-submodules
+podman compose up -d --build
+```
 
-For an always-on server with automatic updates and a public tunnel,
-see the [server guide](site/notes/server/index.md).
+CI tests changes; it does not deploy. To return to a version, check out
+its commit and run the same build command. No custom installer, cron or
+host service scripts. After reboot, run `podman compose up -d`.
+
+## Edit
+
+- Pages: `site/<page>/index.md` (Markdown with indented code blocks).
+- Appearance: `pub/style/style.css`.
+- Navigation, headers and footer: `site/_werc/lib/`.
+
+Rebuild after editing. `./check` validates the running site (requires curl).
+
+## Optional public tunnel
+
+Run `cp .env.example .env` and fill in `TUNNEL_TOKEN`.
+Set the Cloudflare hostname route to `http://site:8080`, then:
+
+```sh
+podman compose --profile tunnel up -d --build
+```
+
+Keep `.env` private. Set `PORT` there to change the local port.
+Use `--profile tunnel` with `down` to stop both services.
+For a different port, check with `./check http://localhost:8081`.
+
+More details: [server guide](site/notes/server/index.md).
 
 ## License
 
-Original website code and content: MIT License.
-
-Oxanium: SIL Open Font License 1.1.
-werc: Public domain.
-
-See the respective license files and upstream projects.
+Site: MIT. Oxanium: SIL OFL 1.1. werc: public domain.

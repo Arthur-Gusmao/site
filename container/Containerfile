@@ -30,17 +30,6 @@ RUN set -eux; \
     chmod 755 /srv/werc/bin/werc.rc; \
     chmod -R a+rX /srv/werc
 
-ARG REVISION
-
-RUN set -eu; \
-    case "$REVISION" in ''|*[!0123456789abcdef]*) exit 1 ;; esac; \
-    test "${#REVISION}" -eq 40; \
-    mkdir -p /srv/werc/pub/meta; \
-    printf '%s\n' "$REVISION" > /srv/werc/pub/meta/revision.txt; \
-    chmod 0644 /srv/werc/pub/meta/revision.txt
-
-LABEL org.opencontainers.image.revision="$REVISION"
-
 USER 1000:1000
 
 EXPOSE 8080

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Check the rendered pages, appearance and private-path protection.
+set -eu
+base=${1:-http://127.0.0.1:8080}
+base=${base%/}
+http() { curl --max-time 5 -H 'Host: arthurgusmao.com.br' "$@"; }
+page=$(http -fsS --retry 10 --retry-connrefused --retry-delay 1 --retry-max-time 30 "$base/")
+printf '%s\n' "$page" | grep -F '<h1>Arthur Gusmão</h1>' >/dev/null
+for path in about/ projects/ notes/ notes/server/ pub/style/style.css pub/fonts/oxanium.woff2; do
+    http -fsS -o /dev/null "$base/$path"
+done
+[ "$(http -sS -o /dev/null -w '%{http_code}' "$base/_werc/config")" = 403 ]
+echo 'Site checks passed.'

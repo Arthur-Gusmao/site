@@ -1,99 +1,60 @@
 # Site server
 
-    Cloudflare Tunnel -> container (lighttpd + werc)
-    GitHub -> CI -> image -> automatic update
+    Browser -> site container (lighttpd + werc)
+    Optional public access: Cloudflare Tunnel -> site container
 
-One rootless container on Alpine/OpenRC, listening on `127.0.0.1:8080`.
-Markdown pages, Oxanium, no database or extra proxy.
+One `compose.yaml`, no custom host installer or deploy scripts.
+Git and Podman with a Compose provider are the host requirements.
+On Alpine, install them with `doas apk add git podman podman-compose nftables`.
 
-## Run on another machine
-
-Install Git and Docker or Podman (Linux containers), then:
-
-    git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
-    cd site
-    ./run
-
-Open `http://localhost:8080`. Stop with Ctrl+C; run `./run 8081` to use another
-port. This builds the checked-out source and requires no tunnel token.
-Check out a specific commit first to reproduce that source version.
-
-## Install an always-on server
-
-This optional setup requires Alpine/OpenRC and an x86_64 host for the
-images published by this repository's CI. A public hostname requires
-your own Cloudflare Tunnel token and route.
+## Run
 
     git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
     cd site
-    doas sh ops/werc-install
+    podman compose up -d --build
 
-Save the tunnel token in `/etc/cloudflared/token`, root-owned, mode `0600`.
-Set the Cloudflare hostname route to `http://127.0.0.1:8080`.
+Open `http://localhost:8080`.
 
-    doas werc update
-    doas werc start
+## Update and stop
 
-## Operate
+    git pull --ff-only --recurse-submodules
+    podman compose up -d --build
+    podman compose logs -f
+    podman compose down
 
-    doas werc status
-    doas werc logs
-    doas werc update
-    doas werc restart
-    doas werc stop
-    doas werc start
+Updates are manual. CI builds and tests changes without deploying them.
+To return to a version, check out its commit and rebuild. Updates can
+interrupt requests; there is no automatic rollback. After reboot, run
+`podman compose up -d`.
 
-Updates follow `master` each minute. CI tests the image before publication.
-The server replaces the container and checks its HTTP revision, pages,
-stylesheets, font and private-path protection. If the check fails, it
-restores the old container. Updates briefly interrupt requests.
+## Public access
 
-## Restore a release
+Run `cp .env.example .env` and set your private `TUNNEL_TOKEN`.
+Configure the Cloudflare hostname route to `http://site:8080`.
+The tunnel reaches the site over the Compose network.
 
-    doas werc rollback
+    podman compose --profile tunnel up -d --build
+    podman compose --profile tunnel logs -f
+    podman compose --profile tunnel down
 
-Rollback restores the previous container and pauses automatic updates.
-To deploy a known full commit SHA, or resume automatic updates:
+Use a fresh token and hostname route for a separate public deployment.
+Keep `.env` out of Git. Set `PORT` there if `8080` is already occupied.
+The default setup runs locally without credentials.
 
-    doas werc update FULL_COMMIT_SHA
-    doas werc resume
+## Edit and check
 
-## Update host scripts
+Pages live in `site/`; style in `pub/style/style.css`; templates in
+`site/_werc/lib/`. Rebuild after editing. Check HTTP with:
 
-Wait for any active deployment to finish, then:
+    ./check
 
-    doas werc pause
-    doas sh ops/werc-install
-    doas werc update FULL_COMMIT_SHA
-    doas werc resume
+The check needs curl. It verifies pages, CSS, Oxanium and private-path denial.
 
-Image updates change the website; host scripts require reinstalling.
+## Moving from the previous setup
 
-## Edit and preview
-
-Pages live in `site/`; appearance in `pub/style/style.css`.
-Navigation and footer live in `site/_werc/lib/`. Use indented code blocks
-in Markdown. The formatter uses Plan 9 AWK.
-
-    ./run
-
-Stop with Ctrl+C and rerun after editing. The local script uses your own
-Docker or Podman. Production uses the dedicated `werc` user, storage in
-`/var/lib/werc/.local/share/werc-oci/storage` and runtime in `/run/werc-oci`.
-
-## Diagnose
-
-    doas werc status
-    doas werc logs
-    doas tail -50 /var/log/messages
-    curl -fsS http://127.0.0.1:8080/pub/meta/revision.txt
-
-If local HTTP works but the public site fails:
-
-    doas rc-service cloudflared status
-    doas tail -50 /var/log/cloudflared.err
-
-Check the tunnel route, token, free port `8080`, published image and pause
-flag (`/etc/werc/paused`). Do not reset production Podman storage: it holds
-the rollback release. To rebuild the host, install from Git, restore your
-private tunnel token and deploy a known commit.
+Stop the old deployment cron and OpenRC services before starting Compose
+on the same host. They are not managed or removed by Compose.
+The public tunnel route changes from `http://127.0.0.1:8080` to
+`http://site:8080` because the tunnel now runs inside the Compose network.
+Keep the old containers until the new setup works; they are separate from
+this Compose project.
