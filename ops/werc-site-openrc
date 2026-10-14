@@ -8,7 +8,6 @@ podman_werc() {
 }
 depend() {
     need localmount cgroups
-    before caddy
 }
 start_pre() {
     checkpath -d -m 0700 -o werc:werc /run/werc-oci
@@ -19,7 +18,7 @@ verify() {
     case "$expected" in ''|*[!0123456789abcdef]*) return 1 ;; esac
     [ "${#expected}" -eq 40 ] || return 1
     actual=$(curl -fsS --max-time 3 -H 'Host: arthurgusmao.com.br' \
-        http://127.0.0.1:18085/pub/meta/revision.txt) || return 1
+        http://127.0.0.1:8080/pub/meta/revision.txt) || return 1
     [ "$actual" = "$expected" ]
 }
 start() {

@@ -4,7 +4,7 @@ set -eu
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 [ "$(id -u)" -eq 0 ] || { echo 'Run with doas' >&2; exit 1; }
 cd "$(dirname "$0")"
-apk add --no-cache podman shadow-subids passt curl git flock su-exec caddy
+apk add --no-cache podman shadow-subids passt curl git flock su-exec
 if ! command -v cloudflared >/dev/null; then
     # Official release, pinned and verified. Alpine has no cloudflared package.
     case "$(uname -m)" in
@@ -40,7 +40,7 @@ install -d -m 0755 -o root -g root /etc/werc
 install -d -m 0700 -o werc -g werc /run/werc-oci
 backup=/etc/werc/previous-install
 install -d -m 0700 "$backup"
-for script in werc-podman werc-deploy; do
+for script in werc werc-podman werc-deploy; do
     [ ! -f "/usr/local/sbin/$script" ] || cp -p "/usr/local/sbin/$script" "$backup/"
     install -m 0755 -o root -g root "$script" "/usr/local/sbin/$script"
 done
@@ -49,9 +49,15 @@ install -m 0755 -o root -g root werc-site-openrc /etc/init.d/werc-site
 [ ! -f /etc/init.d/cloudflared ] || cp -p /etc/init.d/cloudflared "$backup/"
 install -m 0755 -o root -g root cloudflared-openrc /etc/init.d/cloudflared
 
-install -d -m 0755 /etc/caddy
-[ ! -f /etc/caddy/Caddyfile ] || cp -p /etc/caddy/Caddyfile "$backup/"
-install -m 0644 -o root -g root Caddyfile /etc/caddy/Caddyfile
+# Migrate the previous dedicated proxy only when its config matches ours.
+if [ -f /etc/caddy/Caddyfile ] && cmp -s /etc/caddy/Caddyfile Caddyfile; then
+    cp -p /etc/caddy/Caddyfile "$backup/"
+    if rc-service caddy status >/dev/null 2>&1; then
+        touch /etc/werc/paused
+        rc-service caddy stop
+    fi
+    rc-update del caddy default || :
+fi
 install -d -m 0700 -o root -g root /etc/cloudflared
 
 # A dedicated user crontab: deployment never needs root.
@@ -64,10 +70,9 @@ chmod 0600 /etc/crontabs/werc
 touch /etc/crontabs
 rc-update add cgroups default
 rc-update add werc-site default
-rc-update add caddy default
 rc-update add cloudflared default
 rc-update add crond default
 rc-service crond start
 echo "Installed. Previous scripts: $backup"
-echo 'Run: rc-service caddy start; rc-service cloudflared start'
-echo 'Run: su-exec werc env HOME=/var/lib/werc werc-deploy; rc-service werc-site start'
+echo 'Save the tunnel token in /etc/cloudflared/token (root, mode 0600).'
+echo 'Then run: werc update; rc-service werc-site start; rc-service cloudflared start'

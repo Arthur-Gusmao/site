@@ -13,11 +13,10 @@ minimalist software and systems programming.
 - Systems programming
 - Open source
 
-## About me 
+## About me
 
 I am trying to understand computers, not just use them
 
 ## About this website
 
 This website is powered by werc.
-

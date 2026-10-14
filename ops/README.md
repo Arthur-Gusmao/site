@@ -1,13 +1,12 @@
 # Site server
 
-One running container, a fixed Caddy upstream, and one rootless deployment script.
-Updates have a brief restart window; failed replacements restore the previous image.
+    Cloudflare Tunnel -> container (lighttpd + werc)
+    GitHub -> tested image -> automatic update
 
-Read the [audit guide](https://arthurgusmao.com.br/notes/server/audit/) first.
-The [complete documentation](https://arthurgusmao.com.br/notes/server/) covers setup,
-operation, recovery, and the explicit tradeoffs.
+One rootless container, no database, no JavaScript and no extra reverse proxy.
+The tunnel points to `http://127.0.0.1:8080`.
 
-## Install
+## Install on Alpine / OpenRC
 
 ```sh
 git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
@@ -15,40 +14,52 @@ cd site
 doas sh ops/werc-install
 ```
 
-Configure the Cloudflare hostname route to `http://127.0.0.1:8080` and save its
-token privately in `/etc/cloudflared/token`, root-owned mode 0600.
-The installer owns the single-site Caddyfile and dedicated werc user crontab.
+Save the Cloudflare tunnel token in `/etc/cloudflared/token`, owned by root
+with mode `0600`. Configure its hostname route to `http://127.0.0.1:8080`.
 
 ```sh
-doas rc-service caddy start
-doas rc-service cloudflared start
-doas su-exec werc env HOME=/var/lib/werc werc-deploy
+doas werc update
 doas rc-service werc-site start
+doas rc-service cloudflared start
 ```
 
-## Operate
+## Everyday commands
 
-```sh
-doas rc-service werc-site verify
-doas su-exec werc env HOME=/var/lib/werc werc-podman ps -a
-curl -fsS https://arthurgusmao.com.br/pub/meta/revision.txt
-doas tail -50 /var/log/messages
-```
+| Task | Command |
+| --- | --- |
+| Status | `doas werc status` |
+| Container logs | `doas werc logs` |
+| Update now | `doas werc update` |
+| Deploy a full commit SHA | `doas werc update SHA` |
+| Pause automatic updates | `doas werc pause` |
+| Restore previous release and pause | `doas werc rollback` |
+| Resume automatic updates | `doas werc resume` |
 
-`werc-site` serves on 18085. `werc-site.check` is a temporary test on 18086.
-`werc-site.previous` is stopped and retains the prior release for rollback.
-Production storage and runtime are fixed by `werc-podman` and are independent
-of personal Podman storage and graphical login.
+Changes to `master` publish a tested image. The server checks each minute.
+It tests the new image on port `18086`, then replaces the live container.
+If replacement fails, it restores the previous container. Updates briefly
+interrupt requests. Host-script changes require rerunning the installer.
 
-## Rollback
+## Upgrade from the Caddy setup
 
-Pause automatic updates, wait for any active transaction to finish, then:
+Pause updates before installing. The installer stops and disables the old
+Caddy service only if its configuration matches this repository's legacy
+`ops/Caddyfile`. The next update moves the site from `18085` to `8080`.
+The Cloudflare route stays the same. Expect downtime until the update completes.
 
 ```sh
 doas touch /etc/werc/paused
-doas su-exec werc env HOME=/var/lib/werc werc-deploy rollback
+doas sh ops/werc-install
+doas werc update FULL_COMMIT_SHA
+doas werc resume
 ```
 
-Explicit SHA and rollback commands ignore the pause file. Remove the file to
-resume following master. Reinstall reviewed source to update host scripts;
-publishing an image updates only the website. Never use `system reset` for cleanup.
+Wait for an active deployment to finish before installing host scripts.
+If port `8080` belongs to another service, resolve that conflict first.
+The installer preserves replaced scripts in `/etc/werc/previous-install`.
+
+More details: [server guide](../site/notes/server/index.md).
+
+If migration fails, the previous container still uses port `18085`.
+Restore access with `doas rc-service caddy start`, fix the failure, stop Caddy
+again, then retry `doas werc update FULL_COMMIT_SHA` before resuming updates.

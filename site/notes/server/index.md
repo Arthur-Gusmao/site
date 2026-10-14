@@ -1,36 +1,53 @@
-# Portable site server
+# Site server
 
-A small website server on an Alpine Linux notebook, with plain shell scripts
-that can be read from beginning to end. All documentation is in English.
+    Cloudflare Tunnel -> container (lighttpd + werc)
+    GitHub -> tested image -> automatic update
 
-    Browser -> Cloudflare Tunnel -> Caddy -> one rootless website container
-    GitHub -> CI -> GHCR -> user cron -> one deployment script
+One rootless container on Alpine Linux. No database or extra reverse proxy.
+The tunnel connects directly to `http://127.0.0.1:8080`.
 
-## Read the documentation
+## Install
 
-- [Audit guide](/notes/server/audit/): the shortest path through the actual code.
-- [Architecture](/notes/server/architecture/): components, identities, ports, and storage.
-- [Installation](/notes/server/installation/): reproduce the server and start the tunnel.
-- [CI/CD](/notes/server/cicd/): PR tests, publishing, and deployment.
-- [Operations](/notes/server/operations/): status, logs, manual deployment, and maintenance.
-- [Development](/notes/server/development/): edit pages, templates, and scripts.
-- [Recovery](/notes/server/recovery/): rollback, interrupted updates, and rebuilding.
-- [Troubleshooting](/notes/server/troubleshooting/): diagnose the request path.
-- [Reference](/notes/server/reference/): every operational file and command.
-- [Design decisions](/notes/server/decisions/): what was removed and the tradeoffs.
+    git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
+    cd site
+    doas sh ops/werc-install
 
-## Everyday workflow
+Save your tunnel token in `/etc/cloudflared/token` (root-owned, mode `0600`).
+Set the Cloudflare hostname route to `http://127.0.0.1:8080`.
 
-Edit the repository, open a PR, and wait for `CI / image`. Merge to `master`
-to publish an image. The notebook checks once per minute, tests a temporary
-candidate, and restarts the production container with the new image.
-Updates have a brief restart window. A failed replacement restores the old container.
+    doas werc update
+    doas rc-service werc-site start
+    doas rc-service cloudflared start
 
-Host-script changes require running the installer from a reviewed checkout.
-Publishing an image changes the website, not the installed host scripts.
-The [repository](https://github.com/Arthur-Gusmao/site) is the source of truth.
+## Use
 
-The inspected notebook uses Alpine edge, OpenRC, Podman, Caddy, and cloudflared.
-The website image starts from Alpine 3.24. Package versions can change, so this
-is a reproducible configuration and procedure, not a byte-identical build promise.
-Private credentials and recovery-archive contents are not published here.
+    doas werc status
+    doas werc logs
+    doas werc update
+    doas werc pause
+    doas werc rollback
+    doas werc resume
+
+`rollback` restores the previous release and pauses automatic updates.
+`update SHA` deploys a specific full commit SHA, even while paused.
+
+## Edit and publish
+
+Edit pages in `site/` and appearance in `pub/style/arthur.css`.
+Merge to `master`: CI builds, checks and publishes the image; the server
+checks for updates each minute. New images are tested before replacement.
+A failed replacement restores the previous container. Updates cause a brief outage.
+Rerun the installer to update host scripts.
+
+## Details
+
+- [Development](/notes/server/development/)
+- [Installation and migration](/notes/server/installation/)
+- [Architecture](/notes/server/architecture/)
+- [CI/CD](/notes/server/cicd/)
+- [Operations](/notes/server/operations/)
+- [Recovery](/notes/server/recovery/)
+- [Troubleshooting](/notes/server/troubleshooting/)
+- [File reference](/notes/server/reference/)
+- [Design decisions](/notes/server/decisions/)
+- [Audit](/notes/server/audit/)

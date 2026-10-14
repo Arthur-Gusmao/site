@@ -5,7 +5,7 @@ set -eu
 name=werc-site
 candidate=werc-site.check
 previous=werc-site.previous
-port=18085
+port=8080
 test_port=18086
 host=arthurgusmao.com.br
 registry=ghcr.io/arthur-gusmao/site
@@ -17,7 +17,7 @@ podman() { /usr/local/sbin/werc-podman "$@"; }
 
 # The parent owns the lock; container processes never inherit it.
 if [ "${WERCD_LOCKED:-}" != 1 ]; then
-    exec env WERCD_LOCKED=1 flock --nonblock --close --conflict-exit-code 0 \
+    exec env WERCD_LOCKED=1 flock --nonblock --close --conflict-exit-code 75 \
         /run/werc-oci/deploy.lock "$0" "$@"
 fi
 if [ "$#" -eq 0 ] && [ -e /etc/werc/paused ]; then
@@ -106,7 +106,7 @@ if podman container exists "$candidate"; then
 fi
 podman run -d --name "$candidate" --publish "127.0.0.1:$test_port:8080" "$image"
 ready "$test_port"
-for path in / /about/ /projects/ /notes/ /pub/style/style.css /pub/fonts/oxanium.woff2 /_werc/config; do
+for path in / /about/ /projects/ /notes/ /pub/style/style.css /pub/style/arthur.css /pub/fonts/oxanium.woff2 /_werc/config; do
     expected=200
     [ "$path" != /_werc/config ] || expected=403
     actual=$(curl -sS --max-time 5 -H "Host: $host" -o /dev/null -w '%{http_code}' "http://127.0.0.1:$test_port$path")

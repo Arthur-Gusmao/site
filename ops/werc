@@ -1,0 +1,25 @@
+#!/bin/sh
+# One entry point for site operations on the Alpine host.
+set -eu
+[ "$(id -u)" -eq 0 ] || { echo "Run with doas: doas werc $*" >&2; exit 1; }
+run() { su-exec werc env HOME=/var/lib/werc "$@"; }
+case "${1:-help}" in
+    update)
+        [ "$#" -le 2 ] || { echo 'Usage: werc update [SHA]' >&2; exit 2; }
+        if [ "$#" -eq 2 ]; then
+            run /usr/local/sbin/werc-deploy "$2"
+        else
+            run /usr/local/sbin/werc-deploy
+        fi
+        ;;
+    rollback)
+        touch /etc/werc/paused
+        run /usr/local/sbin/werc-deploy rollback
+        ;;
+    status) rc-service werc-site verify; run /usr/local/sbin/werc-podman ps -a ;;
+    logs) run /usr/local/sbin/werc-podman logs --tail 50 werc-site ;;
+    pause) touch /etc/werc/paused ;;
+    resume) rm -f /etc/werc/paused ;;
+    help) echo 'Usage: werc {update [SHA]|status|logs|rollback|pause|resume}' ;;
+    *) echo 'Unknown command. Run: werc help' >&2; exit 2 ;;
+esac

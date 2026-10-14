@@ -12,5 +12,5 @@ error_log=/var/log/cloudflared.err
 depend() {
     need net
     use dns logger
-    after caddy
+    after werc-site
 }
