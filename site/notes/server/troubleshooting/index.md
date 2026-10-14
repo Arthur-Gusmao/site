@@ -18,6 +18,3 @@ Its hostname route must target `http://127.0.0.1:8080`.
 For failed updates, inspect `/var/log/messages` for `werc-deploy`.
 Check whether updates are paused (`/etc/werc/paused`), the image was published,
 and port `8080` is available. Host-script changes need the installer.
-
-After migration, Caddy should be stopped. A customized Caddy configuration
-is preserved by the installer and must be handled manually.

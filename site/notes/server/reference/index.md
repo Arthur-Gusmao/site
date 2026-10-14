@@ -13,7 +13,6 @@
 - `ops/werc-podman`: fixed rootless storage and runtime.
 - `ops/werc-site-openrc`: container lifecycle at boot.
 - `ops/cloudflared-openrc`: tunnel lifecycle.
-- `ops/Caddyfile`: legacy configuration used only to recognize migration.
 
 The tunnel token lives in `/etc/cloudflared/token`. The pause flag is
 `/etc/werc/paused`. Host-script backups are in `/etc/werc/previous-install`.

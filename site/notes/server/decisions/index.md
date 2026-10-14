@@ -2,8 +2,8 @@
 
 [Server guide](/notes/server/)
 
-The tunnel now connects directly to the website container. Removing Caddy
-removes one service, one active configuration and one request hop.
+The tunnel connects directly to the website container, with no intermediate
+proxy service or configuration.
 
 Keep one rootless container and commit-tagged images: releases remain
 identifiable and the previous container remains available for rollback.

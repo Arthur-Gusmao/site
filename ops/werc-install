@@ -49,15 +49,6 @@ install -m 0755 -o root -g root werc-site-openrc /etc/init.d/werc-site
 [ ! -f /etc/init.d/cloudflared ] || cp -p /etc/init.d/cloudflared "$backup/"
 install -m 0755 -o root -g root cloudflared-openrc /etc/init.d/cloudflared
 
-# Migrate the previous dedicated proxy only when its config matches ours.
-if [ -f /etc/caddy/Caddyfile ] && cmp -s /etc/caddy/Caddyfile Caddyfile; then
-    cp -p /etc/caddy/Caddyfile "$backup/"
-    if rc-service caddy status >/dev/null 2>&1; then
-        touch /etc/werc/paused
-        rc-service caddy stop
-    fi
-    rc-update del caddy default || :
-fi
 install -d -m 0700 -o root -g root /etc/cloudflared
 
 # A dedicated user crontab: deployment never needs root.

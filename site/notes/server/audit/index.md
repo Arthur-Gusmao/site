@@ -18,5 +18,5 @@ Validate shell syntax locally:
     sh -n ops/werc-install
 
 Then follow the [development guide](/notes/server/development/) to build
-and check HTTP locally. Installation and migration need validation on
+and check HTTP locally. Installation needs validation on
 an Alpine/OpenRC host with a configured tunnel.

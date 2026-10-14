@@ -4,7 +4,7 @@
 
 The request path is Cloudflare Tunnel -> lighttpd -> werc. lighttpd and
 werc run in one container. werc renders Markdown without a database.
-There is no Caddy service in the new setup.
+The tunnel connects directly to the container.
 
 The host runs Alpine/OpenRC. `cloudflared` maintains the tunnel and
 `werc-site` starts the container after boot. A dedicated `werc` user runs

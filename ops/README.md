@@ -40,26 +40,18 @@ It tests the new image on port `18086`, then replaces the live container.
 If replacement fails, it restores the previous container. Updates briefly
 interrupt requests. Host-script changes require rerunning the installer.
 
-## Upgrade from the Caddy setup
+## Update host scripts
 
-Pause updates before installing. The installer stops and disables the old
-Caddy service only if its configuration matches this repository's legacy
-`ops/Caddyfile`. The next update moves the site from `18085` to `8080`.
-The Cloudflare route stays the same. Expect downtime until the update completes.
+Wait for an active deployment to finish before reinstalling:
 
 ```sh
-doas touch /etc/werc/paused
+doas werc pause
 doas sh ops/werc-install
 doas werc update FULL_COMMIT_SHA
 doas werc resume
 ```
 
-Wait for an active deployment to finish before installing host scripts.
-If port `8080` belongs to another service, resolve that conflict first.
 The installer preserves replaced scripts in `/etc/werc/previous-install`.
+Port `8080` must be available for the website container.
 
 More details: [server guide](../site/notes/server/index.md).
-
-If migration fails, the previous container still uses port `18085`.
-Restore access with `doas rc-service caddy start`, fix the failure, stop Caddy
-again, then retry `doas werc update FULL_COMMIT_SHA` before resuming updates.

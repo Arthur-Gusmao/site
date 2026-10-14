@@ -42,7 +42,7 @@ Rerun the installer to update host scripts.
 ## Details
 
 - [Development](/notes/server/development/)
-- [Installation and migration](/notes/server/installation/)
+- [Installation](/notes/server/installation/)
 - [Architecture](/notes/server/architecture/)
 - [CI/CD](/notes/server/cicd/)
 - [Operations](/notes/server/operations/)
