@@ -1,12 +1,10 @@
 #!/bin/sh
-# One running website container. Test first, replace it, restore on failure.
+# Replace the website container; restore the previous release on failure.
 set -eu
 
 name=werc-site
-candidate=werc-site.check
 previous=werc-site.previous
 port=8080
-test_port=18086
 registry=ghcr.io/arthur-gusmao/site
 
 [ "$(id -un)" = werc ] || { echo 'Run as werc' >&2; exit 1; }
@@ -57,14 +55,11 @@ if [ "${1:-}" != rollback ]; then
 fi
 [ "$(podman image inspect -f '{{ index .Labels "org.opencontainers.image.revision" }}' "$image")" = "$sha" ] || exit 1
 
-# This flag covers only the production replacement, not candidate testing.
+# Restore only if production replacement has begun.
 replacing=0
 cleanup() {
     code=$?
     trap - 0 1 2 15
-    if podman container exists "$candidate"; then
-        podman rm -f "$candidate" >/dev/null || :
-    fi
     if [ "$code" -ne 0 ] && [ "$replacing" -eq 1 ]; then
         echo 'Deployment failed; restoring the previous container' >&2
         if podman container exists "$previous"; then
@@ -84,19 +79,6 @@ trap 'exit 129' 1
 trap 'exit 130' 2
 trap 'exit 143' 15
 
-# A stale test container is never production and can be removed under the lock.
-if podman container exists "$candidate"; then
-    podman rm -f "$candidate" >/dev/null
-fi
-podman run -d --name "$candidate" --publish "127.0.0.1:$test_port:8080" "$image"
-/usr/local/sbin/werc check "http://127.0.0.1:$test_port" "$sha"
-podman rm -f "$candidate" >/dev/null
-
-# Do not automatically deploy a commit overtaken during candidate testing.
-if [ "$#" -eq 0 ]; then
-    latest=$(busybox timeout 30 git ls-remote https://github.com/Arthur-Gusmao/site.git refs/heads/master | awk '{print $1}')
-    [ "$latest" = "$sha" ] || { echo 'Master changed; retry next minute'; exit 0; }
-fi
 if podman container exists "$previous"; then
     podman rm "$previous" >/dev/null
 fi

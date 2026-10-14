@@ -36,7 +36,7 @@ podman run --rm -p 127.0.0.1:18083:8080 localhost/site:dev
 Open http://localhost:18083. Stop with Ctrl+C and rebuild after editing.
 
 Changes to `master` build and test an image before automatic deployment.
-See [server commands](ops/README.md) for installation and rollback.
+See [server guide](site/notes/server/index.md) for installation and rollback.
 
 ## License
 
