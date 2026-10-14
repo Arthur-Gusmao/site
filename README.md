@@ -49,7 +49,7 @@ Rebuild after editing. `./check` validates the running site (requires curl).
 ## Optional public tunnel
 
 Run `cp .env.example .env` and fill in `TUNNEL_TOKEN`.
-Set the Cloudflare hostname route to `http://site:8080`, then:
+Set the Cloudflare hostname route to `http://127.0.0.1:8080`, then:
 
 ```sh
 podman compose --profile tunnel up -d --build

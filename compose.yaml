@@ -10,6 +10,7 @@ services:
   tunnel:
     image: docker.io/cloudflare/cloudflared:2026.10.0
     profiles: [tunnel]
+    network_mode: service:site
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: "${TUNNEL_TOKEN:-}"

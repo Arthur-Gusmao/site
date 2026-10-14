@@ -30,8 +30,8 @@ interrupt requests; there is no automatic rollback. After reboot, run
 ## Public access
 
 Run `cp .env.example .env` and set your private `TUNNEL_TOKEN`.
-Configure the Cloudflare hostname route to `http://site:8080`.
-The tunnel reaches the site over the Compose network.
+Configure the Cloudflare hostname route to `http://127.0.0.1:8080`.
+The tunnel shares the site container network, so localhost reaches the site.
 
     podman compose --profile tunnel up -d --build
     podman compose --profile tunnel logs -f
@@ -54,7 +54,7 @@ The check needs curl. It verifies pages, CSS, Oxanium and private-path denial.
 
 Stop the old deployment cron and OpenRC services before starting Compose
 on the same host. They are not managed or removed by Compose.
-The public tunnel route changes from `http://127.0.0.1:8080` to
-`http://site:8080` because the tunnel now runs inside the Compose network.
+The public tunnel route stays `http://127.0.0.1:8080`: the tunnel shares
+the site container network.
 Keep the old containers until the new setup works; they are separate from
 this Compose project.
