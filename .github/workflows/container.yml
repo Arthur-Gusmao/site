@@ -45,7 +45,7 @@ jobs:
       - name: Validate operations scripts
         run: |
           set -eu
-          for script in ops/werc ops/werc-* ops/cloudflared-openrc; do
+          for script in run ops/werc ops/werc-* ops/cloudflared-openrc; do
             sh -n "$script"
           done
 

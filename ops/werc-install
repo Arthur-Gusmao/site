@@ -3,6 +3,10 @@
 set -eu
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 [ "$(id -u)" -eq 0 ] || { echo 'Run with doas' >&2; exit 1; }
+if [ ! -f /etc/alpine-release ] || ! command -v rc-service >/dev/null; then
+    echo 'Server installation requires Alpine Linux with OpenRC. Use ./run for a local site.' >&2
+    exit 1
+fi
 cd "$(dirname "$0")"
 apk add --no-cache podman shadow-subids passt curl git flock su-exec
 if ! command -v cloudflared >/dev/null; then
@@ -63,6 +67,7 @@ rc-update add cgroups default
 rc-update add werc-site default
 rc-update add cloudflared default
 rc-update add crond default
+rc-service cgroups start
 rc-service crond start
 echo "Installed. Previous scripts: $backup"
 echo 'Save the tunnel token in /etc/cloudflared/token (root, mode 0600).'

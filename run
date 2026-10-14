@@ -1,0 +1,23 @@
+#!/bin/sh
+# Build and run the same site on any host with Docker or Podman.
+set -eu
+cd "$(dirname "$0")"
+[ "$#" -le 1 ] || { echo 'Usage: ./run [PORT]' >&2; exit 2; }
+port=${1:-8080}
+case "$port" in ''|*[!0-9]*) echo 'PORT must be a number' >&2; exit 2 ;; esac
+[ "$port" -ge 1 ] && [ "$port" -le 65535 ] || { echo 'PORT must be 1..65535' >&2; exit 2; }
+if command -v podman >/dev/null; then
+    engine=podman
+elif command -v docker >/dev/null; then
+    engine=docker
+else
+    echo 'Install Docker or Podman, then run ./run again.' >&2
+    exit 1
+fi
+if [ ! -f vendor/werc/bin/werc.rc ]; then
+    git submodule update --init --recursive
+fi
+"$engine" build --build-arg "REVISION=$(git rev-parse HEAD)" \
+    -f container/Containerfile -t localhost/site:local .
+echo "Open http://localhost:$port — stop with Ctrl+C."
+exec "$engine" run --rm -p "127.0.0.1:$port:8080" localhost/site:local

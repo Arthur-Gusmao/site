@@ -6,7 +6,23 @@
 One rootless container on Alpine/OpenRC, listening on `127.0.0.1:8080`.
 Markdown pages, Oxanium, no database or extra proxy.
 
-## Install
+## Run on another machine
+
+Install Git and Docker or Podman (Linux containers), then:
+
+    git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
+    cd site
+    ./run
+
+Open `http://localhost:8080`. Stop with Ctrl+C; run `./run 8081` to use another
+port. This builds the checked-out source and requires no tunnel token.
+Check out a specific commit first to reproduce that source version.
+
+## Install an always-on server
+
+This optional setup requires Alpine/OpenRC and an x86_64 host for the
+images published by this repository's CI. A public hostname requires
+your own Cloudflare Tunnel token and route.
 
     git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
     cd site
@@ -60,18 +76,11 @@ Pages live in `site/`; appearance in `pub/style/arthur.css`.
 Navigation and footer live in `site/_werc/lib/`. Use indented code blocks
 in Markdown. The formatter uses Plan 9 AWK.
 
-    git submodule update --init --recursive
-    revision=$(git rev-parse HEAD)
-    podman build --build-arg "REVISION=$revision" -f container/Containerfile -t localhost/site:dev .
-    podman run --rm -p 127.0.0.1:18083:8080 localhost/site:dev
+    ./run
 
-Open `http://localhost:18083`. In another terminal, check the site:
-
-    sh ops/werc check http://127.0.0.1:18083 "$(git rev-parse HEAD)"
-
-Use personal Podman for preview; production uses the dedicated `werc` user,
-with storage in `/var/lib/werc/.local/share/werc-oci/storage` and runtime in
-`/run/werc-oci`. Stop the preview with Ctrl+C. Rebuild after editing.
+Stop with Ctrl+C and rerun after editing. The local script uses your own
+Docker or Podman. Production uses the dedicated `werc` user, storage in
+`/var/lib/werc/.local/share/werc-oci/storage` and runtime in `/run/werc-oci`.
 
 ## Diagnose
 
