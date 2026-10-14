@@ -15,7 +15,7 @@ Then:
 ```sh
 git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
 cd site
-podman compose up -d --build
+podman compose up -d --build --force-recreate
 ```
 
 Open http://localhost:8080.
@@ -31,7 +31,7 @@ Update manually:
 
 ```sh
 git pull --ff-only --recurse-submodules
-podman compose up -d --build
+podman compose up -d --build --force-recreate
 ```
 
 CI tests changes; it does not deploy. To return to a version, check out
@@ -52,11 +52,11 @@ Run `cp .env.example .env` and fill in `TUNNEL_TOKEN`.
 Set the Cloudflare hostname route to `http://127.0.0.1:8080`, then:
 
 ```sh
-podman compose --profile tunnel up -d --build
+podman compose --profile tunnel up -d --build --force-recreate
 ```
 
 Keep `.env` private. Set `PORT` there to change the local port.
-Use `--profile tunnel` with `down` to stop both services.
+Use `--profile tunnel` when updating or stopping a public deployment.
 For a different port, check with `./check http://localhost:8081`.
 
 More details: [server guide](site/notes/server/index.md).

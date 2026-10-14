@@ -11,14 +11,14 @@ On Alpine, install them with `doas apk add git podman podman-compose nftables`.
 
     git clone --recurse-submodules https://github.com/Arthur-Gusmao/site.git
     cd site
-    podman compose up -d --build
+    podman compose up -d --build --force-recreate
 
 Open `http://localhost:8080`.
 
 ## Update and stop
 
     git pull --ff-only --recurse-submodules
-    podman compose up -d --build
+    podman compose up -d --build --force-recreate
     podman compose logs -f
     podman compose down
 
@@ -33,7 +33,7 @@ Run `cp .env.example .env` and set your private `TUNNEL_TOKEN`.
 Configure the Cloudflare hostname route to `http://127.0.0.1:8080`.
 The tunnel shares the site container network, so localhost reaches the site.
 
-    podman compose --profile tunnel up -d --build
+    podman compose --profile tunnel up -d --build --force-recreate
     podman compose --profile tunnel logs -f
     podman compose --profile tunnel down
 
