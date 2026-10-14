@@ -22,7 +22,7 @@ case "$command" in
             sleep 1
         done
         http -fsS "$base/" | grep -F '<h1>Arthur Gusmão</h1>' >/dev/null
-        for path in about/ projects/ notes/ pub/style/style.css pub/style/arthur.css pub/fonts/oxanium.woff2; do
+        for path in about/ projects/ notes/ pub/style/style.css pub/fonts/oxanium.woff2; do
             http -fsS -o /dev/null "$base/$path"
         done
         [ "$(http -sS -o /dev/null -w '%{http_code}' "$base/_werc/config")" = 403 ]

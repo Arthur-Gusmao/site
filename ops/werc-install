@@ -42,15 +42,10 @@ done
 
 install -d -m 0755 -o root -g root /etc/werc
 install -d -m 0700 -o werc -g werc /run/werc-oci
-backup=/etc/werc/previous-install
-install -d -m 0700 "$backup"
 for script in werc werc-deploy; do
-    [ ! -f "/usr/local/sbin/$script" ] || cp -p "/usr/local/sbin/$script" "$backup/"
     install -m 0755 -o root -g root "$script" "/usr/local/sbin/$script"
 done
-[ ! -f /etc/init.d/werc-site ] || cp -p /etc/init.d/werc-site "$backup/"
 install -m 0755 -o root -g root werc-site-openrc /etc/init.d/werc-site
-[ ! -f /etc/init.d/cloudflared ] || cp -p /etc/init.d/cloudflared "$backup/"
 install -m 0755 -o root -g root cloudflared-openrc /etc/init.d/cloudflared
 
 install -d -m 0700 -o root -g root /etc/cloudflared
@@ -69,6 +64,6 @@ rc-update add cloudflared default
 rc-update add crond default
 rc-service cgroups start
 rc-service crond start
-echo "Installed. Previous scripts: $backup"
+echo "Installed."
 echo 'Save the tunnel token in /etc/cloudflared/token (root, mode 0600).'
 echo 'Then run: werc update; werc start'

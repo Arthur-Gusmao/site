@@ -3,3 +3,5 @@ plan9port=/usr/lib/plan9
 path=($plan9port/bin . ./bin ./bin/contrib /bin /usr/bin)
 
 formatter=(awk -f /srv/werc/bin/contrib/md2html.awk)
+
+headers=sites/arthurgusmao.com.br/_werc/lib/headers.tpl

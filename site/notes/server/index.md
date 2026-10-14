@@ -67,12 +67,11 @@ Wait for any active deployment to finish, then:
     doas werc update FULL_COMMIT_SHA
     doas werc resume
 
-The installer keeps replaced scripts in `/etc/werc/previous-install`.
 Image updates change the website; host scripts require reinstalling.
 
 ## Edit and preview
 
-Pages live in `site/`; appearance in `pub/style/arthur.css`.
+Pages live in `site/`; appearance in `pub/style/style.css`.
 Navigation and footer live in `site/_werc/lib/`. Use indented code blocks
 in Markdown. The formatter uses Plan 9 AWK.
 

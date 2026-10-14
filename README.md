@@ -24,7 +24,7 @@ including local edits. No tunnel token or Alpine host is needed to run locally.
 | --- | --- |
 | Home | `site/index.md` |
 | Pages | `site/<page>/index.md` |
-| Appearance | `pub/style/arthur.css` |
+| Appearance | `pub/style/style.css` |
 | Navigation | `site/_werc/lib/top_bar.inc` |
 | Footer | `site/_werc/lib/footer.inc` |
 

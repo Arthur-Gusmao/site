@@ -2,11 +2,8 @@
 **/.git
 .github
 ops
-payload.json
-container/*.bak
+**/*.bak
 **/_werc/config
 **/.env*
 **/*.key
 **/*.pem
-
-site/_werc/config

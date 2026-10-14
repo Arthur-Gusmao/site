@@ -19,5 +19,3 @@
 *.db
 
 site/_werc/config
-
-container/*.bak
