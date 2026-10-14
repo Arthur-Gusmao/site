@@ -8,9 +8,8 @@
 - `container/`: image and lighttpd configuration.
 - `.github/workflows/container.yml`: build, test and publish.
 - `ops/werc-install`: install host dependencies and services.
-- `ops/werc`: everyday commands.
+- `ops/werc`: commands, HTTP checks and fixed rootless storage.
 - `ops/werc-deploy`: test, replace and restore containers.
-- `ops/werc-podman`: fixed rootless storage and runtime.
 - `ops/werc-site-openrc`: container lifecycle at boot.
 - `ops/cloudflared-openrc`: tunnel lifecycle.
 

@@ -16,8 +16,7 @@ Save your tunnel token in `/etc/cloudflared/token` (root-owned, mode `0600`).
 Set the Cloudflare hostname route to `http://127.0.0.1:8080`.
 
     doas werc update
-    doas rc-service werc-site start
-    doas rc-service cloudflared start
+    doas werc start
 
 ## Use
 

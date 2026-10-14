@@ -81,37 +81,7 @@ jobs:
 
           trap 'podman logs "$CID" || true; podman rm -f "$CID" >/dev/null 2>&1 || true' EXIT
 
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            if curl -fsS --max-time 5 \
-              -H 'Host: arthurgusmao.com.br' \
-              -o /tmp/werc-index.html \
-              http://127.0.0.1:18083/; then
-              break
-            fi
-            sleep 2
-          done
-
-          grep -F '<h1>Arthur Gusmão</h1>' /tmp/werc-index.html
-
-          for path in about/ projects/ notes/ pub/style/style.css pub/style/arthur.css pub/fonts/oxanium.woff2; do
-            curl -fsS --max-time 5 \
-              -H 'Host: arthurgusmao.com.br' \
-              -o /dev/null "http://127.0.0.1:18083/$path"
-          done
-
-          REVISION=$(curl -fsS --max-time 5 \
-            -H 'Host: arthurgusmao.com.br' \
-            http://127.0.0.1:18083/pub/meta/revision.txt)
-
-          test "$REVISION" = "$GITHUB_SHA"
-
-          STATUS=$(curl -sS --max-time 5 \
-            -H 'Host: arthurgusmao.com.br' \
-            -o /dev/null \
-            -w '%{http_code}' \
-            http://127.0.0.1:18083/_werc/config)
-
-          test "$STATUS" = 403
+          sh ops/werc check http://127.0.0.1:18083 "$GITHUB_SHA"
 
       - name: Publish to GHCR
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'

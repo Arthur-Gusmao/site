@@ -1,11 +1,7 @@
 FROM docker.io/library/alpine:3.24
 
-RUN apk add --no-cache \
-    lighttpd \
-    plan9port \
-    gawk
-
-RUN addgroup -S -g 1000 web \
+RUN apk add --no-cache lighttpd plan9port \
+    && addgroup -S -g 1000 web \
     && adduser -S -D -H -u 1000 -G web web
 
 ENV PLAN9=/usr/lib/plan9
@@ -28,15 +24,11 @@ COPY --chmod=0644 container/lighttpd.conf \
     /etc/lighttpd/lighttpd.conf
 
 RUN set -eux; \
-    test -f /srv/werc/bin/werc.rc; \
-    test -x /usr/lib/plan9/bin/rc; \
     /bin/sed -i \
       '1s|^#!.*|#!/usr/lib/plan9/bin/rc|' \
       /srv/werc/bin/werc.rc; \
     chmod 755 /srv/werc/bin/werc.rc; \
-    chmod -R a+rX /srv/werc; \
-    mkdir -p /srv/werc/sites/arthurgusmao.com.br/_werc; \
-    test -x /srv/werc/bin/werc.rc
+    chmod -R a+rX /srv/werc
 
 ARG REVISION
 

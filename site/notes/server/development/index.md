@@ -17,7 +17,7 @@ werc formatter does not implement GitHub-style fenced code blocks.
 
 ## Rendering and presentation
 
-The image installs lighttpd, plan9port, and gawk. It rewrites the CGI interpreter
+The image installs lighttpd and plan9port. It rewrites the CGI interpreter
 path to `/usr/lib/plan9/bin/rc` and uses `container/initrc.local` to choose the
 AWK Markdown formatter. The configured PATH selects plan9port's AWK;
 use `/usr/lib/plan9/bin/awk` when checking Markdown on this host.
@@ -47,8 +47,7 @@ Use personal rootless Podman storage for development, not the production wrapper
 
 In another terminal:
 
-    curl -fsS -H 'Host: arthurgusmao.com.br' http://127.0.0.1:18083/
-    curl -fsS -H 'Host: arthurgusmao.com.br' http://127.0.0.1:18083/notes/server/
+    sh ops/werc check http://127.0.0.1:18083 "$(git rev-parse HEAD)"
 
 The foreground container is removed when stopped. Stop it before reusing its
 name or port. A local build can include uncommitted files even though its marker

@@ -19,14 +19,16 @@ with mode `0600`. Configure its hostname route to `http://127.0.0.1:8080`.
 
 ```sh
 doas werc update
-doas rc-service werc-site start
-doas rc-service cloudflared start
+doas werc start
 ```
 
 ## Everyday commands
 
 | Task | Command |
 | --- | --- |
+| Start | `doas werc start` |
+| Stop | `doas werc stop` |
+| Restart | `doas werc restart` |
 | Status | `doas werc status` |
 | Container logs | `doas werc logs` |
 | Update now | `doas werc update` |

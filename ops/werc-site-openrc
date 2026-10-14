@@ -4,7 +4,7 @@ description="Rootless website container"
 extra_commands="verify"
 name=werc-site
 podman_werc() {
-    su-exec werc env HOME=/var/lib/werc /usr/local/sbin/werc-podman "$@"
+    su-exec werc env HOME=/var/lib/werc /usr/local/sbin/werc podman "$@"
 }
 depend() {
     need localmount cgroups
@@ -15,11 +15,7 @@ start_pre() {
 verify() {
     [ "$(podman_werc inspect -f '{{.State.Running}}' "$name")" = true ] || return 1
     expected=$(podman_werc inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$name") || return 1
-    case "$expected" in ''|*[!0123456789abcdef]*) return 1 ;; esac
-    [ "${#expected}" -eq 40 ] || return 1
-    actual=$(curl -fsS --max-time 3 -H 'Host: arthurgusmao.com.br' \
-        http://127.0.0.1:8080/pub/meta/revision.txt) || return 1
-    [ "$actual" = "$expected" ]
+    /usr/local/sbin/werc check http://127.0.0.1:8080 "$expected"
 }
 start() {
     if ! podman_werc container exists "$name"; then
@@ -32,14 +28,7 @@ start() {
     fi
     ebegin "Starting $name"
     podman_werc start "$name" || { eend 1; return 1; }
-    attempt=1
-    while [ "$attempt" -le 10 ]; do
-        if verify; then eend 0; return 0; fi
-        attempt=$((attempt + 1))
-        sleep 1
-    done
-    eend 1 'HTTP revision check failed'
-    return 1
+    if verify; then eend 0; else eend 1 'HTTP check failed'; return 1; fi
 }
 status() { verify; }
 stop() {

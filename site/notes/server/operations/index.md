@@ -12,8 +12,7 @@
 the last 50 lines from lighttpd. Deployment logs are in `/var/log/messages`.
 
     doas tail -50 /var/log/messages
-    doas rc-service werc-site restart
-    doas rc-service cloudflared restart
+    doas werc restart
 
 To restore the previous release and pause automatic updates:
 

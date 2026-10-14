@@ -1,9 +1,0 @@
-#!/bin/sh
-# Dedicated rootless storage: independent of the graphical login session.
-set -eu
-[ "$(id -un)" = werc ] || { echo 'Run as werc' >&2; exit 1; }
-export XDG_RUNTIME_DIR=/run/werc-oci
-exec /usr/bin/podman \
-    --root /var/lib/werc/.local/share/werc-oci/storage \
-    --runroot /run/werc-oci/storage \
-    --tmpdir /run/werc-oci/libpod "$@"
