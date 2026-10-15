@@ -1,0 +1,44 @@
+#!/sbin/openrc-run
+
+description="Arthur Gusmão site containers"
+
+: ${site_user:=aw}
+: ${site_dir:=/home/aw/src/site}
+
+depend() {
+	need cgroups networking
+}
+
+run_compose() {
+	local action=$1
+	local uid group home runtime_dir
+
+	uid=$(id -u "$site_user") || return 1
+	group=$(id -gn "$site_user") || return 1
+	home=$(awk -F: -v user="$site_user" '$1 == user { print $6; exit }' /etc/passwd)
+	[ -n "$home" ] || return 1
+	runtime_dir="/run/user/$uid"
+	checkpath --directory --owner "$site_user:$group" --mode 0700 "$runtime_dir" || return 1
+
+	su-exec "$site_user" env HOME="$home" XDG_RUNTIME_DIR="$runtime_dir" \
+		/bin/sh -c '
+			cd "$1" || exit
+			case "$2" in
+				up) exec podman compose --profile tunnel up -d ;;
+				down) exec podman compose --profile tunnel down ;;
+				*) exit 2 ;;
+			esac
+		' sh "$site_dir" "$action"
+}
+
+start() {
+	ebegin "Starting site and Cloudflare tunnel"
+	run_compose up
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping site and Cloudflare tunnel"
+	run_compose down
+	eend $?
+}

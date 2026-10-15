@@ -35,8 +35,19 @@ podman compose up -d --build --force-recreate
 ```
 
 CI tests changes; it does not deploy. To return to a version, check out
-its commit and run the same build command. No custom installer, cron or
-host service scripts. After reboot, run `podman compose up -d`.
+its commit and run the same build command. Updates are manual.
+
+On Alpine, enable startup at boot with OpenRC:
+
+```sh
+doas install -Dm755 container/arthurgusmao.openrc /etc/init.d/arthurgusmao
+doas sh -c 'printf "site_user=aw\nsite_dir=/home/aw/src/site\n" > /etc/conf.d/arthurgusmao'
+doas rc-update add arthurgusmao default
+doas rc-service arthurgusmao start
+```
+
+Adjust `site_user` and `site_dir` for your machine. The service starts and
+stops the site and public tunnel with the system.
 
 ## Edit
 

@@ -3,7 +3,7 @@
     Browser -> site container (lighttpd + werc)
     Optional public access: Cloudflare Tunnel -> site container
 
-One `compose.yaml`, no custom host installer or deploy scripts.
+One `compose.yaml` runs the site and optional tunnel. Updates are manual.
 Git and Podman with a Compose provider are the host requirements.
 On Alpine, install them with `doas apk add git podman podman-compose nftables`.
 
@@ -22,10 +22,15 @@ Open `http://localhost:8080`.
     podman compose logs -f
     podman compose down
 
-Updates are manual. CI builds and tests changes without deploying them.
-To return to a version, check out its commit and rebuild. Updates can
-interrupt requests; there is no automatic rollback. After reboot, run
-`podman compose up -d`.
+CI builds and tests changes without deploying them. To return to a version,
+check out its commit and rebuild. Updates can interrupt requests; there is
+no automatic rollback.
+
+On Alpine, install `container/arthurgusmao.openrc` as
+`/etc/init.d/arthurgusmao`, set `site_user` and `site_dir` in
+`/etc/conf.d/arthurgusmao`, then run `rc-update add arthurgusmao default`.
+The OpenRC service starts the site and tunnel at boot and stops them at
+shutdown.
 
 ## Public access
 
